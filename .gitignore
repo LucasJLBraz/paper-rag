@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+
+# example projects that install this into their repo shouldn't be committed here
+.paper-rag.toml
+.rag_index/
