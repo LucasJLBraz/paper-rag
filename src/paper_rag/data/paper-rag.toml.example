@@ -10,8 +10,11 @@ table_name = "chunks"
 
 [embedding]
 # "sentence-transformers" (default, no external server) or "ollama"
+# multilingual-e5-small: fast on CPU (no CUDA needed), multilingual, good
+# fit for STEM papers with mixed-language queries. See HANDOFF.md for the
+# bge-m3 speed/quality comparison that led to this default.
 backend = "sentence-transformers"
-model = "BAAI/bge-m3"
+model = "intfloat/multilingual-e5-small"
 ollama_host = "http://localhost:11434"
 
 [chunking]

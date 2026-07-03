@@ -24,7 +24,7 @@ class IndexConfig:
 @dataclass
 class EmbeddingConfig:
     backend: str = "sentence-transformers"
-    model: str = "BAAI/bge-m3"
+    model: str = "intfloat/multilingual-e5-small"
     ollama_host: str = "http://localhost:11434"
 
 

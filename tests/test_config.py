@@ -7,7 +7,7 @@ def test_load_config_defaults(tmp_path):
     (tmp_path / ".paper-rag.toml").write_text("")
     cfg = load_config(str(tmp_path / ".paper-rag.toml"))
     assert cfg.corpus.papers_dir == "references/Papers"
-    assert cfg.embedding.model == "BAAI/bge-m3"
+    assert cfg.embedding.model == "intfloat/multilingual-e5-small"
     assert cfg.chunking.max_tokens == 400
 
 
