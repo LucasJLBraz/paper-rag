@@ -16,7 +16,7 @@ class EmbeddingBackend(Protocol):
     name: str
     dim: int
 
-    def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def embed(self, texts: list[str], is_query: bool = False) -> list[list[float]]: ...
 
 
 class SentenceTransformerBackend:
@@ -27,8 +27,15 @@ class SentenceTransformerBackend:
         self._model = SentenceTransformer(model_name)
         get_dim = getattr(self._model, "get_embedding_dimension", None) or self._model.get_sentence_embedding_dimension
         self.dim = get_dim()
+        # E5 family models are trained on prefixed asymmetric pairs and lose
+        # meaningful retrieval quality without "query: " / "passage: " — see
+        # https://huggingface.co/intfloat/multilingual-e5-small#faq
+        self._e5_prefixes = "e5-" in model_name.lower()
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], is_query: bool = False) -> list[list[float]]:
+        if self._e5_prefixes:
+            prefix = "query: " if is_query else "passage: "
+            texts = [prefix + t for t in texts]
         return self._model.encode(texts, normalize_embeddings=True).tolist()
 
 
@@ -38,7 +45,7 @@ class OllamaBackend:
         self.host = host.rstrip("/")
         self.dim = len(self.embed(["dimension probe"])[0])
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], is_query: bool = False) -> list[list[float]]:
         out = []
         for t in texts:
             r = requests.post(

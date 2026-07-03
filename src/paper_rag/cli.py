@@ -140,7 +140,7 @@ def cmd_build(args):
 def cmd_search(args):
     cfg = load_config(args.config)
     backend, index, table = _open_index(cfg)
-    [vector] = backend.embed([args.query])
+    [vector] = backend.embed([args.query], is_query=True)
     results = index.search(table, vector, k=args.k, citation_key=args.paper)
     if not results:
         print("No results. Has `paper-rag build` been run yet?", file=sys.stderr)

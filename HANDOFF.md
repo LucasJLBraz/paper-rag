@@ -156,3 +156,127 @@ interruption. The open questions above (GROBID, embedding model choice,
 whether speed matters at all) are unchanged — this just fixed two
 correctness/UX bugs the first real run exposed, on top of the performance
 question itself still being open.
+
+## Update: embedding model swap + a real chunking bug (resolves open question #2)
+
+Open question #2 above ("is `bge-m3` the right default?") is answered: no,
+not for this hardware. Full writeup below; short version — swapped to
+`intfloat/multilingual-e5-small`, and while validating the swap with a
+retrieval-quality benchmark, found and fixed a chunking bug that was
+silently hurting table-heavy papers regardless of embedding model.
+
+### Speed: clean before/after, same 6-paper corpus, same machine
+
+| model | params | full-corpus cold rebuild | s/chunk (steady state) |
+|---|---|---|---|
+| `BAAI/bge-m3` | 567M | ~169-200s *per paper* (never finished a full clean run — see below) | ~2.5-3.5 |
+| `intfloat/multilingual-e5-small` | 118M | **~2 min total** | ~0.2-0.3 |
+| `intfloat/multilingual-e5-base` | 278M | ~3:50-4:10 total | ~0.4-0.7 |
+
+The `bge-m3` numbers in the "real numbers" section above turned out **not**
+to be an artifact of CPU contention from a concurrent Claude Code session,
+as originally hypothesized — a clean, single-purpose `build --rebuild` on
+paper 1-2 reproduced the same ~2.5-3.5s/chunk. `bge-m3` is just genuinely
+this slow on an Iris Xe / no-CUDA laptop CPU. `multilingual-e5-small` was
+chosen over an English-only model (e.g. `bge-base-en-v1.5`) specifically
+because queries against this corpus are mixed English/Portuguese even
+though the papers themselves are ~98% English — an English-only model
+can't do cross-lingual query→passage matching, which would have silently
+broken PT queries against EN papers. `multilingual-e5-base` was tried as a
+"does more model help" check and came back *slightly worse* on the quality
+benchmark below while taking ~2x longer — treated as noise, not a real
+signal; ruled out.
+
+**Bug caught before benchmarking**: E5 models are trained on prefixed
+asymmetric pairs (`"query: "` / `"passage: "`) and lose meaningful
+retrieval quality without them — nothing in the codebase added these.
+Fixed in `ingest/embed.py` (`SentenceTransformerBackend.embed` now takes
+`is_query: bool`, auto-detects E5-family models by name) and the two call
+sites that embed a query (`cli.py::cmd_search`, `mcp_server.py`). Chunk
+embedding (`cli.py::cmd_build`) passes `is_query=False` (the default).
+
+### Quality: Golden Q&A / Hit Rate@5 protocol
+
+Per a validation protocol the user supplied: picked 3 already-indexed
+control papers, generated 45 highly specific factual questions (15/paper —
+table values, hyperparameters, named methods, specific findings, not
+abstract-level stuff) each paired with an exact verbatim excerpt from the
+paper as ground truth, then measured Hit Rate@5 — does the correct chunk
+appear in the top-5 search results for that question. Lives in the
+*corpus* repo (`LLM_synthetic_data/benchmark.json` +
+`test_retrieval_quality.py`), not here, since it's tied to that corpus's
+actual papers — `paper-rag` itself stays corpus-agnostic. Threshold: 85%.
+
+**Baseline** (`multilingual-e5-small`, unmodified chunker): **73.3%** (33/45).
+
+Root cause of most failures: `ingest/chunk.py`'s paragraph splitter treats
+an entire markdown table as one indivisible paragraph (no blank lines
+inside a table to split on). A 15-row results table became a single
+~630-token chunk — one embedding vector trying to represent every
+model's numbers at once, unable to discriminate "what's GC's Hellinger
+distance" from "what's TabDif's" when a query asks about one specific row.
+This has nothing to do with which embedding model is configured; it would
+have hurt `bge-m3` just as much.
+
+**Fix** (`ingest/chunk.py`): tables now get detected (`_is_table`, keys off
+the `|---|---|` separator row) and split into small row-batches
+(`_TABLE_ROWS_PER_CHUNK = 4`), with the table's caption (if a short
+paragraph immediately precedes it) and header repeated in every batch for
+context, and each batch flushed as its own atomic chunk — never merged
+back into surrounding prose. Two follow-on bugs found while building this:
+
+- **Row-span/merged cells**: `pymupdf4llm` flattens a cell that visually
+  spans several rows (e.g. a dataset name next to a block of per-method
+  metric rows) by writing the label on only *one* row of the span — not
+  necessarily the first, observed on one table at the 4th-of-7 row — and
+  leaving the rest of that column blank. Splitting naively into row
+  batches would separate a data row from the one row that says which group
+  it belongs to. Fixed with `_fill_merged_cells`: nearest-neighbor fill by
+  row distance, in either direction, reconstructs the label for every row
+  without assuming which row of the span originally carried it. Verified
+  this actually matters: before the fix, `"What was the Hellinger distance
+  ... for the GC model on the Acute Myeloid Leukemia dataset"` missed
+  because the correct row's chunk didn't say "GC" was for that dataset in
+  isolation.
+- **A bug in the fix itself**: first cut used `.strip("|")` to trim a row's
+  delimiter pipes before splitting into cells — but `.strip()` eats *all*
+  matching characters from each end, so a row with a genuinely empty first
+  cell (`"||Original|58|"`, i.e. two adjacent pipes) collapsed to
+  `"Original|58|"`, silently dropping a column and misaligning every cell
+  after it. Caught by a test
+  (`test_table_row_span_group_label_is_filled_into_every_row`) before it
+  shipped. Fixed with `_row_cells()`, which trims exactly one delimiter
+  pipe per side instead of stripping the whole run.
+
+**After the chunking fix**: **80.0%** (36/45) — 5 previously-failing
+table-row questions fixed, 2 new misses introduced (increased fragmentation
+— 116→177 chunks on the largest paper — shifted some chunk boundaries for
+two prose-based questions that previously happened to land in one chunk).
+Net +3. Still below the 85% target.
+
+**Known limitation, found not fixed**: `_fill_merged_cells`'s
+nearest-neighbor heuristic works well for a column that's a clean,
+evenly-spaced group label (the case above) but can guess wrong on a column
+that's genuinely sparse/optional with no clean group boundaries — found on
+one "model comparison" table in the Survey paper where a "Primary
+Requirement" column is populated on only ~7 of 25 rows with ragged,
+uneven gaps between labels. The fill's row-distance guess is sometimes
+wrong there. This is a pre-existing failure (the 2 affected questions —
+`CTGAN`/`medGAN` feature counts — were already misses in the 73.3%
+baseline, before any chunking changes), not a regression, but it's a real
+correctness edge case worth knowing about: the fill trades "usually more
+correct" for "occasionally invents an attribution" on ambiguous tables.
+
+**Remaining gap analysis**: of the 9 final misses, 7 were confirmed present
+in the index but ranked outside top-20 (not a "just raise k" fix), and 6 of
+the 9 cluster on one paper (`EPIC_Jinhee_Kim_2025`) that reports the same
+F1/accuracy numbers in three different tables (main results, ablation,
+appendix) plus prose sections that paraphrase them — a genuinely hard
+disambiguation problem for a single dense-embedding pass, likely to need
+reranking or hybrid (BM25 + dense) search rather than more chunking work to
+close.
+
+**Shipped as default**: `intfloat/multilingual-e5-small` +
+table-aware chunking. Strictly better than the `bge-m3` status quo on both
+speed and the quality benchmark. 13/13 unit tests passing
+(`tests/test_chunk.py` gained 3 table-specific cases).

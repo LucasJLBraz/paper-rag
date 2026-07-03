@@ -28,7 +28,7 @@ def main() -> None:
         and distance (lower = more relevant). Pass citation_key to restrict the
         search to one paper.
         """
-        [vector] = backend.embed([query])
+        [vector] = backend.embed([query], is_query=True)
         results = index.search(table, vector, k=k, citation_key=citation_key)
         return [
             {
