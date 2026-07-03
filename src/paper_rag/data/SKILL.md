@@ -1,6 +1,6 @@
 ---
 name: paper-rag
-description: Local semantic search over references/Papers/ (retrieval instead of full-text PDF reads) plus open-access paper acquisition beyond arXiv (Semantic Scholar, OpenAlex, Unpaywall). Use this to find relevant passages across the paper corpus ("what do our papers say about X") instead of re-reading whole PDFs, and to download a non-arXiv paper (journal PDF, DOI) into the papers directory with a companion metadata file. If this project has an arxiv-paper-fetch skill, use that for arXiv papers specifically — this skill defers to it rather than duplicating it.
+description: Local hybrid (dense + BM25) semantic search over this repo's configured paper corpus (retrieval instead of full-text PDF reads) plus open-access paper acquisition beyond arXiv (Semantic Scholar, OpenAlex, Unpaywall). Use this to find relevant passages across the paper corpus ("what do our papers say about X") instead of re-reading whole PDFs, and to download a non-arXiv paper (journal PDF, DOI) into the papers directory with a companion metadata file. If this project has an arxiv-paper-fetch skill, use that for arXiv papers specifically — this skill defers to it rather than duplicating it.
 ---
 
 # paper-rag
@@ -39,14 +39,21 @@ paper-rag init
 
 `init` writes `.paper-rag.toml` if missing, merges a `paper-rag` entry into
 `.mcp.json` (without touching any other servers already registered there),
-and copies this SKILL.md into `.claude/skills/paper-rag/`. Edit
-`.paper-rag.toml`'s `acquire.contact_email` before using `acquire` —
-Unpaywall requires it.
+adds the configured index directory to `.gitignore` if it isn't covered
+already, and copies this SKILL.md into `.claude/skills/paper-rag/` — this
+file is package-owned and gets re-synced to the installed version on every
+`init`, so don't hand-edit it. Edit `.paper-rag.toml`'s
+`acquire.contact_email` before using `acquire` — Unpaywall requires it.
 
 First run of `build` or the MCP server downloads the configured embedding
-model's weights (default `BAAI/bge-m3`, ~2GB) from Hugging Face — a
-one-time, machine-wide fetch (shared across every project via the local HF
-cache), not project data leaving the machine.
+model's weights (default `intfloat/multilingual-e5-small`, ~470MB) from
+Hugging Face — a one-time, machine-wide fetch (shared across every project
+via the local HF cache), not project data leaving the machine.
+
+If `init` warned that `paper-rag-mcp` isn't on PATH, the MCP server
+registered in `.mcp.json` won't launch from inside Claude Code until that's
+fixed — see the warning's own instructions (`pipx ensurepath`, or activate
+the right venv) before assuming retrieval is broken.
 
 ## Workflow
 

@@ -28,28 +28,72 @@ on-machine; no PDF content or query ever leaves your computer.
 
 ## Install
 
+Requires Python >= 3.10 and [pipx](https://pipx.pypa.io/) (isolates
+`paper-rag`'s dependencies from whatever else is on your system — installs
+it via `pip install --user pipx` if you don't have it already):
+
 ```bash
 pipx install "paper-rag @ git+https://github.com/LucasJLBraz/paper-rag.git"
 ```
 
-(or `pip install -e .` from a local clone for development). Requires
-Python >= 3.10.
+Verify it landed and is on `PATH`:
+
+```bash
+paper-rag --version
+```
+
+If that fails with "command not found," run `pipx ensurepath` and open a
+new terminal — pipx installs binaries into a directory it manages, which
+needs to be on `PATH` for the shell that will launch Claude Code, not just
+the one you ran `pipx install` from.
+
+**For development** instead: `pip install -e ".[dev]"` from a local clone.
+The trade-off is that `paper-rag` / `paper-rag-mcp` then only resolve
+inside that virtualenv — make sure it's active in whatever shell/session
+launches Claude Code, or the MCP server registration below will silently
+fail to start. `paper-rag init` checks this for you and warns if it
+detects a problem.
 
 ## Quickstart
 
 ```bash
 cd your-research-repo
-paper-rag init                 # writes .paper-rag.toml, .mcp.json, .claude/skills/paper-rag/
+paper-rag init                 # writes .paper-rag.toml, .mcp.json, .claude/skills/paper-rag/, .gitignore
 # edit .paper-rag.toml: set acquire.contact_email and corpus.papers_dir
 paper-rag build                 # ingest every PDF under papers_dir
 paper-rag search "your query"   # sanity-check retrieval from the shell
 ```
 
+`init` is safe to re-run any time — it only ever *writes* `.paper-rag.toml`
+if one doesn't exist yet, but always refreshes the bundled skill file and
+the `paper-rag` entry in `.mcp.json` to the currently-installed version, and
+adds the configured index directory to `.gitignore` (a disposable build
+artifact — see [Why the index isn't portable](#why-the-index-isnt-portable) —
+that should never end up in a commit).
+
 Inside Claude Code, `.mcp.json` registers the `paper-rag` MCP server so
 `search_papers` / `list_indexed_papers` are called as native tools — no
-shelling out needed. The bundled Claude Code skill (copied into
-`.claude/skills/paper-rag/` by `init`) documents when to use retrieval vs.
-a full PDF read vs. acquisition.
+shelling out needed. **Restart Claude Code (or reconnect MCP servers)
+after running `init`** so it picks up the newly-registered server; it won't
+appear in an already-running session. The bundled Claude Code skill
+(copied into `.claude/skills/paper-rag/` by `init`) documents when to use
+retrieval vs. a full PDF read vs. acquisition.
+
+### Troubleshooting
+
+- **`search_papers` / `list_indexed_papers` don't show up in Claude Code**:
+  most likely `paper-rag-mcp` isn't resolvable on `PATH` from the process
+  that launches Claude Code — `paper-rag init` prints a warning at setup
+  time if it detects this; see the pipx/venv notes under Install above.
+  Otherwise, restart the Claude Code session (or reconnect MCP servers) —
+  it only reads `.mcp.json` at startup.
+- **`search` / `search_papers` returns nothing**: the index probably
+  hasn't been built yet, or was built for a different corpus — run
+  `paper-rag build`.
+- **First `build` looks stuck**: it isn't — CPU embedding is the slow
+  part by design (see [Performance](#performance)), and the process prints
+  progress per paper as it goes. Give it the couple of minutes the table
+  below suggests before assuming it's hung.
 
 ## How it works
 

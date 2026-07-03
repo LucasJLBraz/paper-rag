@@ -10,9 +10,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import sys
 import time
 from importlib import resources
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
 from .config import load_config
@@ -21,6 +23,13 @@ from .ingest.convert import pdf_to_markdown
 from .ingest.embed import build_backend
 from .ingest.index import PaperIndex
 from .search import hybrid_search
+
+
+def _get_version() -> str:
+    try:
+        return _pkg_version("paper-rag")
+    except PackageNotFoundError:
+        return "unknown (not installed as a package)"
 
 
 def _hash_file(path: Path) -> str:
@@ -51,8 +60,17 @@ def cmd_init(args):
     skill_dir = repo_root / ".claude" / "skills" / "paper-rag"
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_path = skill_dir / "SKILL.md"
-    skill_path.write_text((data / "SKILL.md").read_text())
-    print(f"Wrote {skill_path}")
+    new_skill_content = (data / "SKILL.md").read_text()
+    if skill_path.exists() and skill_path.read_text() == new_skill_content:
+        print(f"{skill_path} already up to date")
+    else:
+        was_present = skill_path.exists()
+        skill_path.write_text(new_skill_content)
+        if was_present:
+            print(f"Updated {skill_path} (previous content differed — this file is package-owned "
+                  "and always synced to the installed version; keep project-specific notes elsewhere)")
+        else:
+            print(f"Wrote {skill_path}")
 
     mcp_path = repo_root / ".mcp.json"
     mcp_config = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
@@ -60,6 +78,29 @@ def cmd_init(args):
     mcp_config["mcpServers"]["paper-rag"] = {"command": "paper-rag-mcp"}
     mcp_path.write_text(json.dumps(mcp_config, indent=2) + "\n")
     print(f"Wrote {mcp_path} (paper-rag MCP server registered; other servers, if any, left untouched)")
+
+    if shutil.which("paper-rag-mcp") is None:
+        print(
+            "  warning: `paper-rag-mcp` isn't on PATH in this shell, so Claude Code may not be able "
+            "to launch the MCP server just registered in .mcp.json. If you installed with pipx, run "
+            "`pipx ensurepath` and open a new terminal; if you're using a dev venv (`pip install -e .`), "
+            "make sure it's active in whatever shell/environment launches Claude Code.",
+            file=sys.stderr,
+        )
+
+    # The vector index is a disposable, deterministic build artifact (see
+    # README's "Why the index isn't portable") — never let it get committed
+    # by accident via a bare `git add .`.
+    gitignore_path = repo_root / ".gitignore"
+    index_dir = load_config(str(config_path)).index.dir
+    entry = index_dir if index_dir.endswith("/") else f"{index_dir}/"
+    existing_lines = gitignore_path.read_text().splitlines() if gitignore_path.exists() else []
+    if entry not in existing_lines and index_dir not in existing_lines:
+        with gitignore_path.open("a") as f:
+            if existing_lines and existing_lines[-1] != "":
+                f.write("\n")
+            f.write(f"{entry}\n")
+        print(f"Added {entry} to {gitignore_path} (disposable vector index — never commit it)")
 
     print("\nNext steps:")
     print(f"  1. Edit {config_path} — set acquire.contact_email and corpus.papers_dir")
@@ -209,6 +250,7 @@ def main():
         pass
 
     parser = argparse.ArgumentParser(description="Local RAG + open-access acquisition for a paper corpus")
+    parser.add_argument("--version", action="version", version=f"paper-rag {_get_version()}")
     parser.add_argument("--config", default=None, help="Path to .paper-rag.toml (default: search upward from cwd)")
     sub = parser.add_subparsers(dest="command", required=True)
 
