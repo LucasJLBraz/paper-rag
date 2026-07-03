@@ -168,7 +168,18 @@ def cmd_acquire(args):
     pdf_path = papers_dir / f"{citation_key}.pdf"
     md_path = papers_dir / f"{citation_key}.md"
 
-    pdf_path.write_bytes(download.fetch_pdf_bytes(hit["pdf_url"]))
+    try:
+        pdf_content = download.fetch_pdf_bytes(hit["pdf_url"])
+    except Exception as e:
+        print(
+            f"Found a candidate via {hit['source']} ({hit['pdf_url']}) but the download failed: {e!r}\n"
+            "The publisher may be blocking scripted downloads even though the PDF is open-access. "
+            "Try a more specific query, or download it manually and place it in "
+            f"{papers_dir}.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    pdf_path.write_bytes(pdf_content)
     metadata.write_metadata(
         md_path,
         citation_key,

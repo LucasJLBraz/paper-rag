@@ -280,3 +280,61 @@ close.
 table-aware chunking. Strictly better than the `bge-m3` status quo on both
 speed and the quality benchmark. 13/13 unit tests passing
 (`tests/test_chunk.py` gained 3 table-specific cases).
+
+## Update: end-to-end pipeline test surfaced two `acquire` crash bugs
+
+Ran `paper-rag acquire` for real (not unit-tested before this) to check the
+"find a paper" half of the tool actually works, then chunked the result to
+check the fix above generalizes past the 3 curated benchmark papers.
+
+**Bug 1 — one rate-limited source crashed the whole command.**
+`acquire/resolve.py`'s fallback chain (Semantic Scholar -> Unpaywall ->
+OpenAlex -> Unpaywall) had no error handling anywhere; `semantic_scholar.py`,
+`openalex.py`, and `unpaywall.py` all call `raise_for_status()` unguarded.
+Semantic Scholar's unauthenticated tier rate-limits hard enough that it
+tripped from *ordinary interactive testing* — a second manual check a
+minute later hit 429 again. Every 429/timeout/5xx from the first source in
+the chain took the whole `acquire` command down with a raw traceback
+instead of falling through to the next source. Fixed with a `_safe()`
+wrapper in `resolve.py` that catches `requests.RequestException`, logs a
+one-line notice, and returns an empty/`None` default so the chain moves on
+— covered by `tests/test_resolve.py` (mocks each source failing in turn).
+
+**Bug 2 — a download failure also crashed uncaught.** Once resolved to a
+candidate PDF URL, `cmd_acquire` called `download.fetch_pdf_bytes()`
+(which itself already retries transient errors 3x) with no try/except —
+a *permanent* failure (e.g. a publisher blocking scripted downloads with
+403, seen live against `academic.oup.com` and `mdpi.com` during testing)
+produced a raw traceback. Fixed by wrapping the download call in
+`cmd_acquire` (`cli.py`) with a try/except that prints which source/URL was
+tried and suggests a more specific query or a manual download, then exits
+cleanly — the same "don't crash the batch on one bad item" pattern already
+applied to `cmd_build` for malformed PDFs.
+
+**Not a bug, but a real usability finding**: OpenAlex's free-text `search`
+degrades noticeably with extra disambiguating terms. Querying `"Modeling
+Tabular Data using Conditional GAN CTGAN Xu 2019"` (title + acronym +
+author + year) didn't surface the actual paper in the top 5 OpenAlex
+results at all; the bare title `"Modeling Tabular data using Conditional
+GAN"` put it in first place with a working arXiv PDF link. Semantic
+Scholar's search is generally better at exact-paper lookup but was
+unavailable for these particular tests due to the rate limit above — worth
+keeping in mind that query phrasing matters more for `acquire` than for
+`search`, and that lean, close-to-canonical-title queries outperform
+kitchen-sink ones.
+
+**Chunking on a real new paper**: `xu2019modeling.pdf` (the actual CTGAN
+paper, 66 chunks) confirmed the table fix generalizes — captions and
+headers correctly repeated across row-batches for a paper outside the
+benchmark set. Also surfaced a *pre-existing, separate* limitation: a
+1144-token outlier chunk from an `Algorithm 1` pseudocode block that
+PDF extraction mangled into one dense, blank-line-free paragraph. Only
+markdown tables get sub-split by the chunker; a non-table paragraph is
+still bounded only by natural blank-line breaks, so sufficiently dense
+non-table content (algorithm blocks, garbled OCR-like extraction) can
+still slip past `max_tokens`. Not touched this round — flagging as a
+follow-up, same fix shape as the table work (detect + sub-split dense
+non-table blocks) if it turns out to matter for retrieval quality on
+algorithm-heavy papers.
+
+16/16 unit tests passing after these fixes (`tests/test_resolve.py` is new).
