@@ -124,10 +124,12 @@ def cmd_build(args):
         ]
         index.add(table, rows)
         manifest[citation_key] = file_hash
+        # Flush after every paper, not just at the end of the loop — a
+        # kill/crash mid-batch must not lose the manifest bookkeeping for
+        # papers that already completed and are safely in the index.
+        manifest_path.write_text(json.dumps(manifest, indent=2))
         elapsed = time.monotonic() - paper_start
         print(f"  {len(rows)} chunks indexed ({elapsed:.1f}s)", flush=True)
-
-    manifest_path.write_text(json.dumps(manifest, indent=2))
 
     if failures:
         print(f"\n{len(failures)} paper(s) failed to ingest and were skipped:", file=sys.stderr)

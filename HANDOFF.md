@@ -108,3 +108,51 @@ round was observability (don't let a working process look dead), not
 speed. Worth deciding explicitly rather than defaulting into a bigger
 GROBID/model-swap project if the incremental-build story already makes
 this a non-issue in practice.
+
+## Update: real numbers from the first instrumented run, and a second bug
+
+With the hardening above shipped, we ran `build` for real against the
+6-paper corpus and could finally *watch* it work instead of guessing.
+Measured, end to end, per paper:
+
+| paper | chunks | wall time | s/chunk |
+|---|---|---|---|
+| A Survey on Tabular Data Generation... | 48 | 169.6s | 3.53 |
+| Comprehensive evaluation framework for synthetic tabular data in health | 78 | 227.7s | 2.92 |
+| EPIC_Jinhee_Kim_2025 | 116 | *(killed mid-embedding, see below)* | — |
+
+Two things worth flagging:
+
+**The measured rate (~3-3.5s/chunk) is roughly 2x the earlier isolated
+microbenchmark (~1.76s/chunk on a 5-chunk sample).** Don't read too much
+into either number — this run had a live Claude Code session doing other
+work concurrently (git, pip, editor activity) competing for the same CPU,
+and the microbenchmark was a 5-chunk sample, not a steady-state measurement.
+Neither is a controlled benchmark. Before deciding between "keep bge-m3" vs.
+"switch to a smaller model" vs. "add GROBID," get a clean number: run
+`build --rebuild` on an otherwise-idle machine and let it finish.
+Extrapolating from what we have, a full cold build of this 6-paper corpus
+likely costs somewhere in the 20-35 minute range under contention, probably
+less on a dedicated run — that's the number to react to, not a per-chunk
+guess.
+
+**We deliberately killed the process again mid-run** (this time by choice,
+not because it looked stuck — the new progress output made it obvious it
+was healthy) to redirect effort into this writeup, and that surfaced a real
+bug: `manifest.json` was only written once, *after* the entire batch loop
+finished. Papers 1-2's 126 chunks were correctly and durably committed to
+the LanceDB table (verified directly — per-paper atomicity works as
+designed), but killing the process before the loop's tail meant the
+manifest never recorded that those two were done. A subsequent `build`
+would have silently redone ~6.5 minutes of already-correct work. Fixed by
+writing `manifest.json` after every successful paper instead of once at the
+end (see `cmd_build` in `cli.py`) — now an interrupted batch only ever
+re-does the one paper that was in flight, never the ones that already
+landed. Manually backfilled the manifest for the two completed papers in
+`LLM_synthetic_data` rather than losing that work to a redundant re-embed.
+
+Net effect: the system is now both observable and safely resumable under
+interruption. The open questions above (GROBID, embedding model choice,
+whether speed matters at all) are unchanged — this just fixed two
+correctness/UX bugs the first real run exposed, on top of the performance
+question itself still being open.
