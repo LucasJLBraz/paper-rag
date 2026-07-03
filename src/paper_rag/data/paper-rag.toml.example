@@ -18,6 +18,12 @@ ollama_host = "http://localhost:11434"
 max_tokens = 400
 overlap_tokens = 60
 
+[ingest]
+# A single malformed PDF can otherwise hang an entire `build` run — see
+# HANDOFF.md. Lower this if you want faster failure on bad PDFs, raise it
+# for very large legitimate papers on a slow machine.
+pdf_timeout_seconds = 120
+
 [acquire]
 # Required by Unpaywall's "polite pool" and requested by OpenAlex/Semantic Scholar.
 contact_email = "you@example.com"

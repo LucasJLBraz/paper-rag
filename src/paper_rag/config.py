@@ -35,6 +35,13 @@ class ChunkingConfig:
 
 
 @dataclass
+class IngestConfig:
+    # Bounds a single PDF's conversion time (SIGALRM, Unix-only) so one
+    # malformed PDF can't hang an entire batch build. See ingest/convert.py.
+    pdf_timeout_seconds: int = 120
+
+
+@dataclass
 class AcquireConfig:
     contact_email: str = ""
     semantic_scholar_api_key: str = ""
@@ -47,6 +54,7 @@ class Config:
     index: IndexConfig = field(default_factory=IndexConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
+    ingest: IngestConfig = field(default_factory=IngestConfig)
     acquire: AcquireConfig = field(default_factory=AcquireConfig)
 
 
@@ -71,5 +79,6 @@ def load_config(path: str | None = None) -> Config:
         index=IndexConfig(**data.get("index", {})),
         embedding=EmbeddingConfig(**data.get("embedding", {})),
         chunking=ChunkingConfig(**data.get("chunking", {})),
+        ingest=IngestConfig(**data.get("ingest", {})),
         acquire=AcquireConfig(**data.get("acquire", {})),
     )

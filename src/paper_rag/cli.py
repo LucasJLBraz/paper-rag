@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 from importlib import resources
 from pathlib import Path
 
@@ -81,20 +82,32 @@ def cmd_build(args):
         print(f"No PDFs found in {papers_dir}", file=sys.stderr)
         return
 
+    failures: list[tuple[str, str]] = []
     for pdf_path in pdfs:
         citation_key = pdf_path.stem
         file_hash = _hash_file(pdf_path)
         if not args.rebuild and manifest.get(citation_key) == file_hash:
             continue
 
-        print(f"Ingesting {citation_key} ...")
-        markdown = pdf_to_markdown(pdf_path)
-        chunks = chunk_markdown(markdown, cfg.chunking.max_tokens, cfg.chunking.overlap_tokens)
-        if not chunks:
-            print(f"  warning: no chunks extracted from {pdf_path.name}", file=sys.stderr)
+        print(f"Ingesting {citation_key} ...", flush=True)
+        paper_start = time.monotonic()
+        try:
+            markdown = pdf_to_markdown(pdf_path, timeout_seconds=cfg.ingest.pdf_timeout_seconds)
+            chunks = chunk_markdown(markdown, cfg.chunking.max_tokens, cfg.chunking.overlap_tokens)
+            if not chunks:
+                print(f"  warning: no chunks extracted from {pdf_path.name}", file=sys.stderr)
+                continue
+            print(f"  {len(chunks)} chunks to embed (this is the slow part on CPU) ...", flush=True)
+
+            vectors = backend.embed([c.text for c in chunks])
+        except Exception as e:
+            # A single bad PDF (corrupt xref/dict entries, non-text scans,
+            # ...) must not take the whole batch down. Skipped papers are
+            # NOT written to the manifest, so the next `build` retries them.
+            print(f"  FAILED: {e!r} — skipping this paper, see HANDOFF.md", file=sys.stderr)
+            failures.append((citation_key, repr(e)))
             continue
 
-        vectors = backend.embed([c.text for c in chunks])
         index.delete_citation_key(table, citation_key)
         rows = [
             {
@@ -111,9 +124,15 @@ def cmd_build(args):
         ]
         index.add(table, rows)
         manifest[citation_key] = file_hash
-        print(f"  {len(rows)} chunks indexed")
+        elapsed = time.monotonic() - paper_start
+        print(f"  {len(rows)} chunks indexed ({elapsed:.1f}s)", flush=True)
 
     manifest_path.write_text(json.dumps(manifest, indent=2))
+
+    if failures:
+        print(f"\n{len(failures)} paper(s) failed to ingest and were skipped:", file=sys.stderr)
+        for key, err in failures:
+            print(f"  - {key}: {err}", file=sys.stderr)
 
 
 def cmd_search(args):
@@ -166,6 +185,15 @@ def cmd_acquire(args):
 
 
 def main():
+    # Piped/redirected stdout is block-buffered by default, which makes a
+    # slow-but-working `build` (CPU embedding is the dominant cost — see
+    # HANDOFF.md) look hung for minutes at a time. Force line buffering so
+    # progress is visible as it happens.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
+
     parser = argparse.ArgumentParser(description="Local RAG + open-access acquisition for a paper corpus")
     parser.add_argument("--config", default=None, help="Path to .paper-rag.toml (default: search upward from cwd)")
     sub = parser.add_subparsers(dest="command", required=True)
