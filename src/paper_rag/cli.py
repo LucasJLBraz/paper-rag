@@ -20,6 +20,7 @@ from .ingest.chunk import chunk_markdown
 from .ingest.convert import pdf_to_markdown
 from .ingest.embed import build_backend
 from .ingest.index import PaperIndex
+from .search import hybrid_search
 
 
 def _hash_file(path: Path) -> str:
@@ -141,12 +142,12 @@ def cmd_search(args):
     cfg = load_config(args.config)
     backend, index, table = _open_index(cfg)
     [vector] = backend.embed([args.query], is_query=True)
-    results = index.search(table, vector, k=args.k, citation_key=args.paper)
+    results = hybrid_search(index, table, args.query, vector, k=args.k, citation_key=args.paper)
     if not results:
         print("No results. Has `paper-rag build` been run yet?", file=sys.stderr)
         return
     for r in results:
-        print(f"[{r['citation_key']} / {r['section']}]  (dist={r['_distance']:.3f})")
+        print(f"[{r['citation_key']} / {r['section']}]  (score={r['score']:.4f})")
         print(r["text"][:400].strip())
         print()
 

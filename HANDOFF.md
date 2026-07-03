@@ -420,3 +420,45 @@ exact numbers.** That's a normal, expected division of labor for a RAG
 system over dense technical content, not a special flaw of this one — and
 it's a substantial upgrade over the alternative of Claude re-reading full
 PDFs from scratch every time.
+
+## Update: BM25 + RRF hybrid search shipped — 80.0% → 84.4%, gap now understood
+
+Implemented the hybrid-search lever flagged as the next step in the reranker
+writeup above (and independently suggested by two external reviews of this
+document): `src/paper_rag/search.py` adds a `hybrid_search()` that runs dense
+vector search (existing `PaperIndex.search`) and lexical BM25
+(`rank_bm25.BM25Okapi`, rebuilt from `table.to_pandas()` on every call — for
+a corpus this size that's milliseconds, and it can never drift out of sync
+with the vector table) as two independent candidate pools, then merges them
+by rank via Reciprocal Rank Fusion (`k=60`, pool size `max(k*4, 20)` per
+method). Wired into both `cli.py::cmd_search` and
+`mcp_server.py::search_papers`, replacing the old direct `index.search()`
+calls; both now surface a fused `score` instead of raw vector `_distance`.
+20/20 unit tests passing (`tests/test_search.py` is new — RRF ordering plus
+a fake-index case where the correct chunk only has lexical, not vector,
+overlap).
+
+**Measured on the same 45-question benchmark, same corpus, unmodified**
+(`LLM_synthetic_data/test_retrieval_quality.py`'s protocol, run against
+`hybrid_search` instead of plain `index.search`): **84.4% (38/45)**, up from
+the 80.0% dense-only baseline — 2 of the previous 9 misses fixed, no
+regressions. Still short of the 85% threshold by exactly one question.
+Tried widening the candidate pool (`_MIN_POOL_SIZE` 20→50,
+`_POOL_SIZE_MULTIPLIER` 4→8) to check whether the remaining misses were a
+pool-size artifact (the earlier gap analysis noted some correct chunks
+ranked outside top-20) — **no change, same 7 misses**. That confirms the
+remaining gap isn't reachable by tuning retrieval breadth: it's the
+already-documented disambiguation problem (`EPIC_Jinhee_Kim_2025` reporting
+the same F1/accuracy numbers across three tables; the CTGAN/medGAN
+merged-cell ambiguous-fill edge case). Shipped with the original pool
+size (`4x`/`20` floor) since widening it bought nothing.
+
+**Interpretation**: hybrid search is a real, validated improvement — ship
+it — but it was never going to single-handedly close the gap on the
+specific 6-9 questions that need genuine passage-level disambiguation
+between near-duplicate content, which no ranking method (dense, lexical, or
+their fusion) can do without either splitting/labeling those duplicate
+tables more explicitly at chunk time or reranking with something that reads
+full passage context. The "navigate and verify, don't cite blind" guidance
+above still stands — the miss rate dropped, the shape of the remaining risk
+didn't change.

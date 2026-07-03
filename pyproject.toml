@@ -11,6 +11,7 @@ dependencies = [
     "lancedb>=0.15",
     "pyarrow>=16",
     "tiktoken>=0.7",
+    "rank-bm25>=0.2",
     "requests>=2.31",
     "mcp>=1.0",
     "tomli>=2.0; python_version<'3.11'",

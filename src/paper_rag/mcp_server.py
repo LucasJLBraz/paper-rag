@@ -8,6 +8,7 @@ from __future__ import annotations
 from .config import load_config
 from .ingest.embed import build_backend
 from .ingest.index import PaperIndex
+from .search import hybrid_search
 
 from mcp.server.fastmcp import FastMCP
 
@@ -22,20 +23,20 @@ def main() -> None:
 
     @mcp.tool()
     def search_papers(query: str, k: int = 5, citation_key: str | None = None) -> list[dict]:
-        """Semantic search over the local paper corpus.
+        """Hybrid (dense + BM25) search over the local paper corpus.
 
         Returns up to k ranked chunks, each with citation_key, section, text,
-        and distance (lower = more relevant). Pass citation_key to restrict the
+        and score (higher = more relevant). Pass citation_key to restrict the
         search to one paper.
         """
         [vector] = backend.embed([query], is_query=True)
-        results = index.search(table, vector, k=k, citation_key=citation_key)
+        results = hybrid_search(index, table, query, vector, k=k, citation_key=citation_key)
         return [
             {
                 "citation_key": r["citation_key"],
                 "section": r["section"],
                 "text": r["text"],
-                "distance": r["_distance"],
+                "score": r["score"],
             }
             for r in results
         ]
