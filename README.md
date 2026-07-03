@@ -5,8 +5,9 @@ repos: retrieve the relevant chunks of a paper instead of re-reading whole
 PDFs on every synthesis turn, and pull in new open-access papers without ad
 hoc scraping.
 
-- **Local-only embeddings** — `sentence-transformers` (default: `BAAI/bge-m3`)
-  or Ollama. No hosted embedding API is ever called.
+- **Local-only embeddings** — `sentence-transformers` (default:
+  `intfloat/multilingual-e5-small`) or Ollama. No hosted embedding API is
+  ever called.
 - **Embedded vector store** — [LanceDB](https://lancedb.github.io/lancedb/),
   file-based, no server process. Treated as a disposable build artifact,
   never committed — see [Why the index isn't portable](#why-the-index-isnt-portable).
@@ -54,6 +55,41 @@ PDF -> markdown (pymupdf4llm)
 already indexed (tracked in `<index_dir>/manifest.json`). Use `--rebuild`
 to force full re-ingestion, e.g. after switching embedding models.
 
+## Performance
+
+Measured on the project's own dev corpus (7 papers, 625 chunks, Intel
+i5-1135G7 laptop CPU, no GPU) — real numbers from this corpus, not
+estimates. Full investigation, including what didn't work, in
+[HANDOFF.md](HANDOFF.md).
+
+**Token usage, vs. Claude reading the full paper directly:**
+
+| | tokens |
+|---|---|
+| Full paper (markdown, as Claude would read it directly) | ~28,000 (avg, this corpus) |
+| One `search` query (top-5 chunks) | ~1,250 |
+| **Reduction** | **~22x** |
+
+Even a research session running ~10 targeted queries against one paper —
+a realistic upper bound for pulling out several specific facts — costs
+~12,500 tokens: still well under a single full read, and each query
+returns exactly the relevant passage instead of requiring Claude to
+re-scan the whole paper's context on every turn.
+
+**Latency:**
+
+| operation | cost |
+|---|---|
+| `paper-rag build` (embedding) | ~0.2-0.3s/chunk — a 625-chunk/7-paper corpus rebuilds cold in ~2 min |
+| `paper-rag search` (CLI, cold process) | ~10-13s, almost entirely one-time model load |
+| `search_papers` via the MCP server (warm — the primary integration) | ~20ms/query after the one-time server-startup load |
+
+The CLI pays the embedding model's load cost on every invocation since
+each run is a fresh process; the MCP server (registered by `paper-rag
+init`, the intended way to use this from Claude Code) loads it once at
+startup and stays warm for the session, so query latency there is
+effectively just the vector search itself.
+
 ## Why the index isn't portable
 
 The vector index is deliberately **not** meant to be copied between
@@ -80,7 +116,7 @@ table_name = "chunks"
 
 [embedding]
 backend = "sentence-transformers"   # or "ollama"
-model = "BAAI/bge-m3"
+model = "intfloat/multilingual-e5-small"
 ollama_host = "http://localhost:11434"
 
 [chunking]

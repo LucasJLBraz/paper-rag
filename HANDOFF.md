@@ -338,3 +338,85 @@ non-table blocks) if it turns out to matter for retrieval quality on
 algorithm-heavy papers.
 
 16/16 unit tests passing after these fixes (`tests/test_resolve.py` is new).
+
+## Update: cross-encoder reranking evaluated and reverted — three models, three different failures
+
+Explored whether query-time cross-encoder reranking (retrieve top-20 via
+the existing dense search, rerank to top-k) could close the 80.0% → 85%
+Hit Rate@5 gap without touching the index. Built the full path (`search.py`
+with a `Reranker` class, `[rerank]` config section, wired into both
+`cmd_search` and the MCP `search_papers` tool, unit tests) and tried three
+models in sequence. **None shipped — all reverted, `search`/`search_papers`
+are back to plain dense search, exactly the 80.0%-validated configuration
+above.**
+
+| model | params | result |
+|---|---|---|
+| `jinaai/jina-reranker-v2-base-multilingual` | 278M | **Broken.** Its custom HF remote code imports `create_position_ids_from_input_ids` from `transformers.models.xlm_roberta.modeling_xlm_roberta` — a private internal, not a public API, that no longer exists in the installed `transformers` 5.13.0. Not fixable from our side without pinning an old `transformers` (risky — `sentence-transformers` 5.6.0 likely needs the newer one) or waiting on an upstream fix to the model repo. |
+| `BAAI/bge-reranker-v2-m3` | 568M | **Works, but far too slow.** Loads fine (trust_remote_code, but — checked — no actual dynamic module gets cached for it, it's a standard architecture). Correctly discriminates relevant vs. irrelevant in a toy test. But reranking 20 *real* ~400-token candidate chunks took **45.4s** on this CPU — a single-question timing check, not the toy 2-short-string benchmark that misleadingly suggested sub-second. Same weight class as the original slow `bge-m3`; decisively fails the "expeditious" requirement for an interactive tool. |
+| `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | ~117M | **Fast (2.4s for 20 real candidates, no `trust_remote_code` needed at all), but made retrieval *worse*.** Full 45-question benchmark: Hit Rate@5 **80.0% → 77.8%**, and it got worse as k dropped (71.1% @k=3, 75.6% @k=4) — the opposite of the k-reduction token-savings idea this was partly meant to enable. Most likely cause: this model is trained on MS MARCO — short web-search queries against short web passages — a real domain mismatch against dense STEM tables and long academic prose. Plausibly it's actively preferring "naturally worded" prose chunks over terse, correct table rows, which is exactly backwards for this corpus. |
+
+**Takeaway**: cross-encoder reranking is not a free lever here. It needs a
+model that's simultaneously (a) fast enough on CPU for real chunk lengths
+— not toy strings, (b) compatible with current `transformers`, and (c)
+trained on a distribution that resembles dense academic/STEM text rather
+than web search snippets. Nothing tried hit all three. If revisited: the
+BM25/hybrid-search option from the original improvement plan doesn't have
+this domain-mismatch risk (keyword matching doesn't have a "training
+distribution"), and is worth trying before hunting for a fourth reranker
+model. 20/20 → 16/16 unit tests after the revert (the reranker-specific
+tests were removed along with the code).
+
+Also fixed in passing: `config.py`'s `EmbeddingConfig` dataclass default
+and the `paper-rag init` template (`paper-rag.toml.example`) were still
+pointing at `BAAI/bge-m3` this entire time — the model swap earlier in
+this document only ever updated the corpus's own live `.paper-rag.toml`.
+Every newly-initialized repo would have silently gotten the slow default.
+Fixed as its own commit, independent of the reranking work.
+
+## Interpretation: is this usable? Is it good enough for real paper research?
+
+**Yes, with one specific caveat.** For the actual intended use — Claude
+Code retrieving relevant passages from a paper corpus instead of
+re-reading full PDFs every turn — this is solid:
+
+- **Token economics are real and large**: ~22x fewer tokens per targeted
+  query than a full-paper read (measured on this corpus, see README). That
+  alone justifies using it over raw PDF reading for any multi-paper or
+  multi-turn research session.
+- **Speed is a non-issue** now: corpus rebuilds in ~2 minutes, and the MCP
+  server path (the intended integration) answers queries in ~20ms once
+  warm. The original "170s for 48 chunks" problem that started this whole
+  investigation is fully resolved.
+- **80% Hit Rate@5 was measured against a deliberately adversarial
+  benchmark** — highly specific numeric/table facts, including several
+  designed to probe exactly the kind of near-duplicate-table content that's
+  hardest to disambiguate. Ordinary research questions (conceptual
+  summaries, "how does X work," "what baselines does this compare against")
+  are generally easier than "what's the exact Hellinger distance for model
+  Y on dataset Z" and should retrieve more reliably than this number
+  suggests in isolation.
+- **Build is safe under interruption** (incremental, per-paper manifest
+  writes) and **acquire degrades gracefully** instead of crashing — the
+  tool won't silently corrupt state or die on the first rate limit.
+
+**The caveat**: 80% (not 85%) on exact-fact retrieval means roughly **1 in
+5 highly specific numeric lookups won't surface the right chunk in the
+top 5**, concentrated on papers with redundant tables (the same result
+reported 3 different ways) or sparse/ambiguous table structure. Combined
+with the known, named limitation of the merged-cell fill heuristic
+(occasionally wrong on ambiguous grouping columns) — **for anything where
+a wrong number would matter — building a results table across papers,
+citing a specific statistic — treat a `search` hit as a strong pointer to
+go verify against the source PDF, not as a citable fact on its own.** For
+everything else (finding the right section, understanding a method,
+locating where a topic is discussed across a corpus), it's reliable enough
+to trust directly, and the demonstrated search results throughout this
+document (correct paper, correct section, sensible cross-paper references)
+back that up.
+
+Net: **use it to navigate and narrow down, not as an unverified source of
+exact numbers.** That's a normal, expected division of labor for a RAG
+system over dense technical content, not a special flaw of this one — and
+it's a substantial upgrade over the alternative of Claude re-reading full
+PDFs from scratch every time.
