@@ -3,11 +3,20 @@
 Local, embedded RAG over a folder of PDFs, built for Claude Code research
 repos: retrieve the relevant chunks of a paper instead of re-reading whole
 PDFs on every synthesis turn, and pull in new open-access papers without ad
-hoc scraping.
+hoc scraping. Everything — embeddings, vector store, lexical index — runs
+on-machine; no PDF content or query ever leaves your computer.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/tokens-dark.svg">
+  <img src="assets/tokens-light.svg" alt="Token cost per query vs. a full paper read: 28,000 tokens for a direct read, 1,250 tokens for one search query — about 22x fewer.">
+</picture>
 
 - **Local-only embeddings** — `sentence-transformers` (default:
   `intfloat/multilingual-e5-small`) or Ollama. No hosted embedding API is
   ever called.
+- **Hybrid retrieval** — dense vector search (LanceDB) *and* lexical BM25,
+  merged by Reciprocal Rank Fusion, so exact table values and acronyms are
+  found alongside conceptual matches. See [How it works](#how-it-works).
 - **Embedded vector store** — [LanceDB](https://lancedb.github.io/lancedb/),
   file-based, no server process. Treated as a disposable build artifact,
   never committed — see [Why the index isn't portable](#why-the-index-isnt-portable).
@@ -44,37 +53,100 @@ a full PDF read vs. acquisition.
 
 ## How it works
 
+**Ingestion** (`paper-rag build`) turns each PDF into embedded, searchable
+chunks:
+
+```mermaid
+flowchart LR
+    A[PDF] --> B["Markdown<br/>(pymupdf4llm)"]
+    B --> C["Section + table-aware chunks<br/>(heading-bounded, References dropped,<br/>token-capped with overlap)"]
+    C --> D["Local embeddings<br/>(sentence-transformers / Ollama)"]
+    D --> E[("LanceDB<br/>(embedded, file-based)")]
 ```
-PDF -> markdown (pymupdf4llm)
-     -> section-aware chunks (heading-bounded, References dropped, token-capped with overlap)
-     -> local embeddings (sentence-transformers / Ollama)
-     -> LanceDB (embedded, file-based)
-```
+
+Tables get special handling: a markdown table is split into small row
+batches with its caption and header repeated in every batch (instead of
+becoming one indivisible, unsearchable blob), and cells that visually span
+several rows are filled forward so a data row never loses the group label
+that identifies it. This was the single biggest retrieval-quality fix found
+during development — see [HANDOFF.md](HANDOFF.md) for the investigation.
 
 `paper-rag build` is incremental — it hashes each PDF and skips ones it's
 already indexed (tracked in `<index_dir>/manifest.json`). Use `--rebuild`
 to force full re-ingestion, e.g. after switching embedding models.
 
+**Retrieval** (`paper-rag search` / the MCP `search_papers` tool) queries
+two independent indexes and merges the rankings, rather than trusting
+either alone:
+
+```mermaid
+flowchart LR
+    Q[Query] --> V["Dense vector search<br/>(LanceDB, cosine)"]
+    Q --> L["Lexical search<br/>(BM25)"]
+    V --> F["Reciprocal Rank<br/>Fusion (k=60)"]
+    L --> F
+    F --> K[Top-k chunks]
+```
+
+Dense embeddings are good at conceptual matches ("how does the model
+handle missing values?") but can blur together near-duplicate content —
+the same metric reported in three different tables, say. BM25 catches
+exact tokens (model names, acronyms, numbers) that a dense embedding has
+no reason to weight highly. Neither index needs to "win": Reciprocal Rank
+Fusion combines their two rankings without requiring cosine distance and
+BM25 score to be on a comparable scale in the first place.
+
 ## Performance
 
 Measured on the project's own dev corpus (7 papers, 625 chunks, Intel
 i5-1135G7 laptop CPU, no GPU) — real numbers from this corpus, not
-estimates. Full investigation, including what didn't work, in
-[HANDOFF.md](HANDOFF.md).
+estimates. Full investigation, including three reranker models that were
+tried and reverted, in [HANDOFF.md](HANDOFF.md).
 
-**Token usage, vs. Claude reading the full paper directly:**
+**Retrieval quality.** Hit Rate@5 on a 45-question benchmark (specific
+table values, hyperparameters, named methods — deliberately harder than
+typical conceptual questions) against 3 held-out papers:
 
-| | tokens |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hit-rate-dark.svg">
+  <img src="assets/hit-rate-light.svg" alt="Hit Rate at 5 progression: 73.3% dense search only, 80.0% after adding table-aware chunking, 84.4% after adding BM25 hybrid search, against an 85% target line.">
+</picture>
+
+| stage | Hit Rate@5 |
 |---|---|
-| Full paper (markdown, as Claude would read it directly) | ~28,000 (avg, this corpus) |
-| One `search` query (top-5 chunks) | ~1,250 |
-| **Reduction** | **~22x** |
+| Dense search only (baseline) | 73.3% |
+| + table-aware chunking | 80.0% |
+| + BM25 hybrid search (RRF) | **84.4%** |
 
-Even a research session running ~10 targeted queries against one paper —
-a realistic upper bound for pulling out several specific facts — costs
-~12,500 tokens: still well under a single full read, and each query
-returns exactly the relevant passage instead of requiring Claude to
-re-scan the whole paper's context on every turn.
+The remaining gap to 85% isn't a retrieval-breadth problem — widening the
+candidate pool doesn't move it. What's left is a handful of questions where
+a paper reports the same numbers across three near-duplicate tables, which
+needs passage-level disambiguation, not better ranking. See HANDOFF.md for
+the full miss analysis. Ordinary conceptual questions ("how does X work,"
+"what baselines does this use") retrieve more reliably than this
+adversarial benchmark suggests in isolation.
+
+**Embedding speed.** CPU throughput was the deciding factor in the default
+model — this machine has no CUDA GPU, so a full corpus rebuild has to be
+tolerable on CPU alone:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/speed-dark.svg">
+  <img src="assets/speed-light.svg" alt="CPU embedding speed by model: multilingual-e5-small 0.25 seconds per chunk (shipped default), multilingual-e5-base 0.55 seconds per chunk, bge-m3 3.00 seconds per chunk (original default).">
+</picture>
+
+`multilingual-e5-small` was chosen over an English-only model specifically
+because queries against a mixed-language corpus need cross-lingual
+query→passage matching — an English-only model can't do that, silently
+breaking non-English queries against English papers.
+
+**Token usage, vs. Claude reading the full paper directly** — see the chart
+at the top of this README: **~22x fewer tokens** per targeted query (~1,250
+vs. ~28,000 for a full paper). Even a research session running ~10 targeted
+queries against one paper — a realistic upper bound for pulling out several
+specific facts — costs ~12,500 tokens: still well under a single full read,
+and each query returns exactly the relevant passage instead of requiring
+Claude to re-scan the whole paper's context on every turn.
 
 **Latency:**
 
@@ -88,7 +160,7 @@ The CLI pays the embedding model's load cost on every invocation since
 each run is a fresh process; the MCP server (registered by `paper-rag
 init`, the intended way to use this from Claude Code) loads it once at
 startup and stays warm for the session, so query latency there is
-effectively just the vector search itself.
+effectively just the hybrid search itself.
 
 ## Why the index isn't portable
 

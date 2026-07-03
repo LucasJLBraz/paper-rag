@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 134" width="680" height="134" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' role="img">
+<rect x="0" y="0" width="680" height="134" fill="#1a1a19"/>
+<line x1="235" y1="106" x2="596" y2="106" stroke="#2c2c2a" stroke-width="1"/>
+<line x1="235" y1="20" x2="235" y2="106" stroke="#383835" stroke-width="1"/>
+<path d="M 235,26 L 555.0655737704918,26 A 4,4 0 0 1 559.0655737704918,30 L 559.0655737704918,44 A 4,4 0 0 1 555.0655737704918,48 L 235,48 Z" fill="#b7d3f6"/>
+<text x="221" y="41.5" text-anchor="end" font-size="13.5" fill="#c3c2b7">Full paper, direct read</text>
+<text x="221" y="55.5" text-anchor="end" font-size="11" fill="#898781">avg, this corpus</text>
+<text x="569.1" y="41.5" text-anchor="start" font-size="13.5" font-weight="600" fill="#ffffff">28,000 tok</text>
+<path d="M 235,78 L 245.4672131147541,78 A 4,4 0 0 1 249.4672131147541,82 L 249.4672131147541,96 A 4,4 0 0 1 245.4672131147541,100 L 235,100 Z" fill="#5598e7"/>
+<text x="221" y="93.5" text-anchor="end" font-size="13.5" fill="#c3c2b7">One search query (top-5)</text>
+<text x="221" y="107.5" text-anchor="end" font-size="11" fill="#898781">~22x fewer tokens</text>
+<text x="259.5" y="93.5" text-anchor="start" font-size="13.5" font-weight="600" fill="#ffffff">1,250 tok</text>
+</svg>
