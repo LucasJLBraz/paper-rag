@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Fix: `paper-rag search` (the CLI) never actually printed the raw `vector_distance`/`bm25_score` fields added in 0.2.0 — they were only wired into `hybrid_search`'s return value and the MCP `search_papers` tool output, not the CLI's own print statement. The fused `score` alone was still all a CLI user ever saw. Now prints whichever of `vector_distance`/`bm25_score` are present per result, plus a one-line explanation of which direction is "better" for each (lower vector_distance, higher bm25_score).
+
 ## 0.3.1
 
 - Fix: added `pandas` as an explicit dependency. `ingest/index.py`, `search.py`, and `mcp_server.py` all call `.to_pandas()` on LanceDB query results, but nothing in `pyproject.toml` declared it — `lancedb` itself doesn't depend on it either. Worked by accident wherever pandas happened to already be installed; on a genuinely clean `pipx install`, `search`/`search_papers`/`list_indexed_papers` (anything hitting a non-empty table) crashed with `ModuleNotFoundError: No module named 'pandas'`. `build` on an empty/new index could appear to succeed since the affected code path is skipped for a 0-row table.

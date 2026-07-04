@@ -202,8 +202,20 @@ def cmd_search(args):
     if not results:
         print("No results. Has `paper-rag build` been run yet?", file=sys.stderr)
         return
+    print(
+        "(score is a rank-fusion artifact, not a similarity measure — most top-k results cluster near "
+        "the same value regardless of match strength; lower vector_distance and higher bm25_score are "
+        "the actual per-method confidence signals, where present)",
+        file=sys.stderr,
+    )
     for r in results:
-        print(f"[{r['citation_key']} / {r['section']}]  (score={r['score']:.4f})")
+        extras = []
+        if "vector_distance" in r:
+            extras.append(f"vector_distance={r['vector_distance']:.4f}")
+        if "bm25_score" in r:
+            extras.append(f"bm25_score={r['bm25_score']:.4f}")
+        extra_str = f"  ({', '.join(extras)})" if extras else ""
+        print(f"[{r['citation_key']} / {r['section']}]  (score={r['score']:.4f}){extra_str}")
         print(r["text"][:400].strip())
         print()
 
