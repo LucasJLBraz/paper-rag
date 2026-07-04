@@ -20,6 +20,43 @@ def test_falls_through_to_openalex_when_semantic_scholar_errors():
     assert hit["title"] == "Found via OpenAlex"
 
 
+def test_find_oa_pdf_candidates_returns_all_hits_in_priority_order():
+    with patch(
+        "paper_rag.acquire.resolve.semantic_scholar.search",
+        return_value=[{"title": "From S2", "pdf_url": "https://example.com/s2.pdf", "doi": None}],
+    ), patch(
+        "paper_rag.acquire.resolve.openalex.search",
+        return_value=[{"title": "From OpenAlex", "pdf_url": "https://example.com/oa.pdf", "doi": None}],
+    ):
+        candidates = resolve.find_oa_pdf_candidates("From S2", contact_email="test@example.com")
+
+    assert [c["source"] for c in candidates] == ["semantic_scholar", "openalex"]
+
+
+def test_relevance_is_high_for_matching_title_and_low_for_unrelated_match():
+    query = "permutation feature importance guided LLM tabular augmentation"
+    good_hit = {"title": "Permutation feature importance for tabular LLM augmentation", "abstract": ""}
+    bad_hit = {"title": "Accurate predictions with a tabular foundation model", "abstract": "permutation invariant"}
+
+    good = resolve._relevance(query, good_hit)
+    bad = resolve._relevance(query, bad_hit)
+
+    assert good > resolve.RELEVANCE_WARN_THRESHOLD
+    assert bad < resolve.RELEVANCE_WARN_THRESHOLD
+
+
+def test_find_oa_pdf_candidates_attaches_relevance_field():
+    with patch(
+        "paper_rag.acquire.resolve.semantic_scholar.search",
+        return_value=[{"title": "Totally unrelated paper", "pdf_url": "https://example.com/s2.pdf", "doi": None}],
+    ), patch("paper_rag.acquire.resolve.openalex.search", return_value=[]):
+        [candidate] = resolve.find_oa_pdf_candidates(
+            "permutation feature importance guided llm tabular augmentation", contact_email="test@example.com"
+        )
+
+    assert candidate["relevance"] < resolve.RELEVANCE_WARN_THRESHOLD
+
+
 def test_returns_none_when_all_sources_error():
     with patch(
         "paper_rag.acquire.resolve.semantic_scholar.search", side_effect=requests.ConnectionError()

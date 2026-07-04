@@ -17,9 +17,18 @@ without ad hoc curl/requests.
   via this repo's `.mcp.json`) — call them directly, no shell-out needed.
 - **Ingestion** (a new PDF landed in the papers directory, or the index is
   stale/missing): run `paper-rag build`.
-- **Acquisition of a non-arXiv paper**: run `paper-rag acquire "<title or
-  query>"`. If this repo has an `arxiv-paper-fetch` skill and the paper is
-  on arXiv, use that instead — don't route arXiv papers through this tool.
+- **Acquisition of a known non-arXiv paper**: run `paper-rag acquire "<its
+  title>"`. This matches by title/DOI — it has no real relevance ranking,
+  so pass the actual title (or a DOI), not a topical description; a vague
+  query can land on an unrelated paper that happens to share a keyword.
+  `acquire` prints a `Matched: "..."` line and a low-confidence warning
+  when its match shares few terms with your query — read both before
+  trusting the result. If this repo has an `arxiv-paper-fetch` skill and
+  the paper is on arXiv, use that instead — don't route arXiv papers
+  through this tool.
+- **Topical/discovery search** ("find papers about X" with no specific
+  title in mind): use WebSearch or `arxiv-paper-fetch`, not `acquire` —
+  `acquire` is a title/DOI resolver, not a literature-discovery tool.
 - **Close reading of one specific paper** (verifying an exact quote,
   citation-integrity checks): still read the PDF directly. Retrieval is for
   synthesis across/within papers, not a replacement for checking a precise
@@ -81,9 +90,12 @@ paper-rag search "how did KGSynX validate persona fidelity?" -k 5
 paper-rag acquire "Comprehensive evaluation framework for synthetic tabular data in health"
 ```
 
-Tries Semantic Scholar, then OpenAlex, then Unpaywall-by-DOI, and stops at
-the first legally open-access PDF. If none is found, it says so — don't
-fall back to scraping a paywalled source.
+Tries Semantic Scholar, then OpenAlex, then Unpaywall-by-DOI, and downloads
+the first candidate whose PDF actually fetches successfully — if one
+candidate's download fails (e.g. a publisher blocking scripted access), it
+falls through to the next candidate for the same query before giving up.
+If none is found or none download, it says so — don't fall back to
+scraping a paywalled source.
 
 ### 4. Tell the user what landed
 

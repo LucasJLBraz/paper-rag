@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+`acquire` reliability fixes from a live-usage assessment's follow-up (topic-level discovery was flagged as weaker than search; these narrow that gap without turning `acquire` into a discovery tool).
+
+- Fix: `acquire` no longer blindly trusts the first hit with a `pdf_url`. It now collects up to 5 ranked candidates from Semantic Scholar/OpenAlex/Unpaywall, and if a candidate's PDF fails to download (e.g. a publisher blocking scripted access on an otherwise-legitimate OA record), falls through to the next candidate for the same query instead of giving up outright.
+- Fix: `acquire` now prints a low-confidence warning when the matched title/abstract shares few terms with the query, since it matches by title/DOI and has no real relevance ranking — this is the same failure mode that let a vague topical query silently match an unrelated paper.
+- Fix: `download.fetch_pdf_bytes` no longer retries a permanent 401/403/404/410 against the same URL 3 times before giving up; it now fails fast on those and only retries transient errors (with backoff).
+- Fix: `semantic_scholar.search` now retries once or twice with backoff (honoring `Retry-After`) on a 429 instead of immediately falling through to OpenAlex, since the unauthenticated tier's rate limit cooldown is usually short-lived.
+- Docs: SKILL.md now states plainly that `acquire` is a title/DOI resolver, not a topic-discovery tool, and to prefer WebSearch/`arxiv-paper-fetch` for the latter.
+
 ## 0.2.0
 
 Fixes from a live-usage assessment, plus one score-interpretability improvement.

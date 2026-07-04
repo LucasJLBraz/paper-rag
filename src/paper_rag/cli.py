@@ -212,30 +212,45 @@ def cmd_acquire(args):
     cfg = load_config(args.config)
     from .acquire import download, metadata, resolve
 
-    hit = resolve.find_oa_pdf(args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key)
-    if not hit:
+    candidates = resolve.find_oa_pdf_candidates(
+        args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key
+    )
+    if not candidates:
         print("No legally open-access PDF found via Semantic Scholar / OpenAlex / Unpaywall.", file=sys.stderr)
         sys.exit(1)
 
-    citation_key = args.citation_key or metadata.make_citation_key(
-        hit.get("title") or args.query, hit.get("authors", []), hit.get("year")
-    )
-    papers_dir = cfg.root / cfg.corpus.papers_dir
-    papers_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = papers_dir / f"{citation_key}.pdf"
-    md_path = papers_dir / f"{citation_key}.md"
+    hit = None
+    pdf_content = None
+    for candidate in candidates:
+        try:
+            pdf_content = download.fetch_pdf_bytes(candidate["pdf_url"])
+            hit = candidate
+            break
+        except Exception as e:
+            print(
+                f"  ({candidate['source']} candidate {candidate['pdf_url']} failed to download: {e!r} "
+                "— trying the next candidate)",
+                file=sys.stderr,
+            )
 
-    try:
-        pdf_content = download.fetch_pdf_bytes(hit["pdf_url"])
-    except Exception as e:
+    papers_dir = cfg.root / cfg.corpus.papers_dir
+    if hit is None:
         print(
-            f"Found a candidate via {hit['source']} ({hit['pdf_url']}) but the download failed: {e!r}\n"
-            "The publisher may be blocking scripted downloads even though the PDF is open-access. "
+            f"Found {len(candidates)} candidate(s) but none downloaded successfully. "
+            "The publisher(s) may be blocking scripted downloads even though the PDF is open-access. "
             "Try a more specific query, or download it manually and place it in "
             f"{papers_dir}.",
             file=sys.stderr,
         )
         sys.exit(1)
+
+    citation_key = args.citation_key or metadata.make_citation_key(
+        hit.get("title") or args.query, hit.get("authors", []), hit.get("year")
+    )
+    papers_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = papers_dir / f"{citation_key}.pdf"
+    md_path = papers_dir / f"{citation_key}.md"
+
     pdf_path.write_bytes(pdf_content)
     metadata.write_metadata(
         md_path,
@@ -250,6 +265,15 @@ def cmd_acquire(args):
         hit.get("abstract") or "",
     )
     print(f"Downloaded via {hit['source']}: {pdf_path.relative_to(cfg.root)}")
+    print(f"Matched: \"{hit.get('title') or '(no title returned)'}\" ({hit.get('year') or 'n.d.'})")
+    if hit.get("relevance", 1.0) < resolve.RELEVANCE_WARN_THRESHOLD:
+        print(
+            f"  WARNING: low keyword overlap (relevance={hit['relevance']:.2f}) between your query and "
+            "the matched title/abstract. `acquire` matches by title/DOI, not topic — verify this is "
+            "actually the paper you meant before citing it. For topical/discovery searches, prefer "
+            "WebSearch or arxiv-paper-fetch instead.",
+            file=sys.stderr,
+        )
     print(f"Metadata: {md_path.relative_to(cfg.root)}")
     print(f"Citation key: {citation_key}")
 
