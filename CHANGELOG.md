@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Fix: added `pandas` as an explicit dependency. `ingest/index.py`, `search.py`, and `mcp_server.py` all call `.to_pandas()` on LanceDB query results, but nothing in `pyproject.toml` declared it — `lancedb` itself doesn't depend on it either. Worked by accident wherever pandas happened to already be installed; on a genuinely clean `pipx install`, `search`/`search_papers`/`list_indexed_papers` (anything hitting a non-empty table) crashed with `ModuleNotFoundError: No module named 'pandas'`. `build` on an empty/new index could appear to succeed since the affected code path is skipped for a 0-row table.
+
 ## 0.3.0
 
 `acquire` reliability fixes from a live-usage assessment's follow-up (topic-level discovery was flagged as weaker than search; these narrow that gap without turning `acquire` into a discovery tool).
