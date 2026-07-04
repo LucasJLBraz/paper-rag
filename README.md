@@ -117,7 +117,10 @@ during development — see [HANDOFF.md](HANDOFF.md) for the investigation.
 
 `paper-rag build` is incremental — it hashes each PDF and skips ones it's
 already indexed (tracked in `<index_dir>/manifest.json`). Use `--rebuild`
-to force full re-ingestion, e.g. after switching embedding models.
+to force full re-ingestion, e.g. after switching embedding models. Every
+`build` (including `--rebuild`) also prunes citation_keys that no longer
+have a PDF in `papers_dir` — from both the LanceDB table and the manifest —
+so deleting a paper doesn't leave stale, unsearchable chunks behind.
 
 **Retrieval** (`paper-rag search` / the MCP `search_papers` tool) queries
 two independent indexes and merges the rankings, rather than trusting

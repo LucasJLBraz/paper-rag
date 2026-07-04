@@ -44,7 +44,14 @@ def _lexical_search(table, query: str, k: int, citation_key: str | None = None) 
     scores = bm25.get_scores(_tokenize(query))
     ranked = sorted(range(len(corpus)), key=lambda i: scores[i], reverse=True)
     rows = df.to_dict("records")
-    return [rows[i] for i in ranked[:k] if scores[i] > 0]
+    hits = []
+    for i in ranked[:k]:
+        if scores[i] <= 0:
+            continue
+        row = dict(rows[i])
+        row["bm25_score"] = float(scores[i])
+        hits.append(row)
+    return hits
 
 
 def _reciprocal_rank_fusion(ranked_id_lists: list[list[str]], k: int = _RRF_K) -> dict[str, float]:
@@ -75,7 +82,10 @@ def hybrid_search(
 
     by_id = {r["chunk_id"]: r for r in vector_hits}
     for r in lexical_hits:
-        by_id.setdefault(r["chunk_id"], r)
+        if r["chunk_id"] in by_id:
+            by_id[r["chunk_id"]]["bm25_score"] = r["bm25_score"]
+        else:
+            by_id[r["chunk_id"]] = r
 
     fused = _reciprocal_rank_fusion(
         [

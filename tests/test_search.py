@@ -28,7 +28,8 @@ class _FakeIndex:
         hits = self._hits
         if citation_key:
             hits = [h for h in hits if h["citation_key"] == citation_key]
-        return hits[:k]
+        hits = [dict(h, vector_distance=0.1) for h in hits[:k]]
+        return hits
 
 
 _ROWS = [
@@ -82,6 +83,13 @@ def test_hybrid_search_surfaces_lexical_only_match():
     ids = [r["chunk_id"] for r in results]
     assert "paperA::1" in ids
     assert all("score" in r for r in results)
+
+    # The lexical-only match should carry a raw bm25_score but no
+    # vector_distance (vector search never returned it); the vector-only
+    # match should carry vector_distance but no bm25_score.
+    lexical_only = next(r for r in results if r["chunk_id"] == "paperA::1")
+    assert "bm25_score" in lexical_only
+    assert "vector_distance" not in lexical_only
 
 
 def test_hybrid_search_respects_citation_key_filter():

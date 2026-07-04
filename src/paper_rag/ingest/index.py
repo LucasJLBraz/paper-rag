@@ -54,6 +54,11 @@ class PaperIndex:
     def delete_citation_key(self, table, citation_key: str) -> None:
         table.delete(f"citation_key = '{citation_key}'")
 
+    def distinct_citation_keys(self, table) -> set[str]:
+        if table.count_rows() == 0:
+            return set()
+        return set(table.to_pandas()["citation_key"].unique().tolist())
+
     def add(self, table, rows: list[dict[str, Any]]) -> None:
         table.add(rows)
 
@@ -61,4 +66,7 @@ class PaperIndex:
         q = table.search(query_vector).limit(k)
         if citation_key:
             q = q.where(f"citation_key = '{citation_key}'")
-        return q.to_list()
+        hits = q.to_list()
+        for hit in hits:
+            hit["vector_distance"] = hit.pop("_distance")
+        return hits

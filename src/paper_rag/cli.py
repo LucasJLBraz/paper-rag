@@ -120,6 +120,21 @@ def cmd_build(args):
     backend, index, table = _open_index(cfg)
 
     pdfs = sorted(papers_dir.glob("*.pdf"))
+
+    # Prune entries for papers that no longer have a PDF on disk. Checks both
+    # manifest.json and the live table's citation_keys, since a paper can end
+    # up in one but not the other (e.g. a run interrupted after `index.add`
+    # but before the manifest was flushed).
+    present_keys = {p.stem for p in pdfs}
+    known_keys = set(manifest.keys()) | index.distinct_citation_keys(table)
+    orphaned_keys = known_keys - present_keys
+    for citation_key in sorted(orphaned_keys):
+        print(f"Pruning {citation_key} (PDF no longer present) ...", flush=True)
+        index.delete_citation_key(table, citation_key)
+        manifest.pop(citation_key, None)
+    if orphaned_keys:
+        manifest_path.write_text(json.dumps(manifest, indent=2))
+
     if not pdfs:
         print(f"No PDFs found in {papers_dir}", file=sys.stderr)
         return
