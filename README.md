@@ -21,7 +21,9 @@ on-machine; no PDF content or query ever leaves your computer.
   file-based, no server process. Treated as a disposable build artifact,
   never committed — see [Why the index isn't portable](#why-the-index-isnt-portable).
 - **Open-access acquisition** — chains Semantic Scholar -> OpenAlex ->
-  Unpaywall-by-DOI, stops at the first legally open PDF.
+  Unpaywall-by-DOI, falls through to the next candidate if one download
+  fails (e.g. a publisher blocking scripted access), and flags a
+  low-confidence match instead of silently trusting the first hit.
 - **Claude Code native** — an MCP server (`search_papers`,
   `list_indexed_papers`) plus a CLI, both installed by one `paper-rag init`
   run per project.
@@ -86,7 +88,10 @@ retrieval vs. a full PDF read vs. acquisition.
   that launches Claude Code — `paper-rag init` prints a warning at setup
   time if it detects this; see the pipx/venv notes under Install above.
   Otherwise, restart the Claude Code session (or reconnect MCP servers) —
-  it only reads `.mcp.json` at startup.
+  it only reads `.mcp.json` at startup. (The server itself now responds to
+  the initial handshake immediately, before loading the embedding model —
+  it no longer risks missing a client's connection-timeout window the way
+  it could before 0.2.0.)
 - **`search` / `search_papers` returns nothing**: the index probably
   hasn't been built yet, or was built for a different corpus — run
   `paper-rag build`.
@@ -142,6 +147,29 @@ exact tokens (model names, acronyms, numbers) that a dense embedding has
 no reason to weight highly. Neither index needs to "win": Reciprocal Rank
 Fusion combines their two rankings without requiring cosine distance and
 BM25 score to be on a comparable scale in the first place.
+
+The fused `score` on each result is a rank-fusion artifact, not a
+similarity measure — RRF's top-k is dominated by consensus hits, so
+everything that survives to the top 5 tends to cluster near the same
+ceiling regardless of how strong the match actually is. Each result also
+carries the raw per-method signal it was found with (`vector_distance`
+and/or `bm25_score`, whichever method(s) actually matched it) alongside
+the fused `score`, so you can look past the fused number when you need an
+actual sense of match strength.
+
+**Acquisition** (`paper-rag acquire`) resolves a query to a downloadable
+PDF via the same Semantic Scholar -> OpenAlex -> Unpaywall chain, but
+matches by title/DOI, not topic — it has no semantic relevance ranking, so
+a vague topical query can land on an unrelated paper that happens to share
+a keyword. Two things guard against trusting a bad match silently: it
+collects up to 5 ranked candidates instead of one, falling through to the
+next if a candidate's PDF fails to download (a publisher blocking scripted
+access doesn't necessarily mean every open-access copy is unreachable);
+and it prints a low-confidence warning when the matched title/abstract
+shares few terms with the query. For actual topic-level discovery ("find
+papers about X"), prefer WebSearch or an arXiv-specific tool — `acquire` is
+a resolver for a paper you can already name, not a literature search
+engine.
 
 ## Performance
 
@@ -205,9 +233,11 @@ Claude to re-scan the whole paper's context on every turn.
 
 The CLI pays the embedding model's load cost on every invocation since
 each run is a fresh process; the MCP server (registered by `paper-rag
-init`, the intended way to use this from Claude Code) loads it once at
-startup and stays warm for the session, so query latency there is
-effectively just the hybrid search itself.
+init`, the intended way to use this from Claude Code) starts responding to
+requests immediately and defers the model load to the first actual tool
+call, then stays warm for the rest of the session — so only the *first*
+`search_papers` call in a session pays the load cost, and every call after
+that is effectively just the hybrid search itself.
 
 ## Why the index isn't portable
 

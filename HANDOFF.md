@@ -462,3 +462,128 @@ tables more explicitly at chunk time or reranking with something that reads
 full passage context. The "navigate and verify, don't cite blind" guidance
 above still stands — the miss rate dropped, the shape of the remaining risk
 didn't change.
+
+## Update: live-usage assessment (0.2.0) — index pruning, MCP startup latency, OpenAlex abstracts, raw scores
+
+First real end-user session against `LLM_synthetic_data` since the hybrid-search
+work above, using the tool as intended rather than as a benchmark harness.
+Retrieval itself held up (every targeted query hit the right passage,
+including a semantic-only match with no literal keyword overlap). Four
+issues came back from that session; each was verified against source before
+fixing, not taken at face value.
+
+**Index never pruned deleted papers — confirmed live, not just in theory.**
+`cmd_build` only ever looped over `papers_dir.glob("*.pdf")` — nothing
+compared that set against `manifest.json` or the table's `citation_key`
+values to find orphans, and this held even under `--rebuild` (same glob,
+just ignoring the hash-skip). Checking the corpus that prompted the report
+found a live instance: `manifest.json` still had an entry for
+`hollmann2025accurate` (the TabPFN paper) with no matching PDF on disk —
+its chunks were still sitting in the LanceDB table, silently retrievable,
+after the user had already deleted it. Fixed in `cmd_build`: every run
+(including `--rebuild`) now prunes any citation_key missing from
+`papers_dir`'s current PDFs from both the table and the manifest, checking
+the *union* of manifest keys and the table's live distinct citation_keys —
+covers both "PDF deleted" and "got into the table but the manifest write
+never happened" (an interrupted-run case, see the manifest-flush bug
+earlier in this doc).
+
+**MCP tools never appeared in Claude Code's tool discovery, despite
+"Connected."** Wrote a standalone MCP stdio client
+(`mcp.client.stdio.stdio_client` + `ClientSession`) to test the server's
+protocol behavior directly, outside Claude Code — `initialize` and
+`tools/list` both worked correctly, ruling out "tools/list unimplemented."
+The actual cause: `mcp_server.py::main()` called `build_backend(...)` (which
+constructs a `SentenceTransformer`, triggering HF Hub HEAD requests even
+against a warm cache) and `index.open_or_create()` *before* `mcp.run()` —
+~8-10s in a live test during which the process couldn't respond to *any*
+MCP request, including the handshake. If the client's patience window for a
+first response is shorter than that, "Connected" at the transport level
+with tools that never populate is exactly what you'd see. Fixed by
+deferring backend/index construction to first tool call (`_get_index()`,
+lazily populating a module-level `_state` dict) — `mcp.run()` now starts
+serving immediately.
+
+**`acquire`-fetched papers sometimes got an empty abstract — traced to
+OpenAlex specifically.** `openalex.py` hardcoded `"abstract": None`
+unconditionally; OpenAlex doesn't return plain-text abstracts (copyright
+reasons), only `abstract_inverted_index` (word -> token-position map),
+which nothing reconstructed. Semantic Scholar's path already carried a real
+abstract through — the session's Semantic Scholar calls had 429'd, so every
+`acquire` fell through to OpenAlex, making the empty abstract look
+consistent rather than intermittent. Fixed by inverting the position map
+back into ordered text when present.
+
+**RRF `score` is uninterpretable as a confidence signal — confirmed as a
+design limitation, not a bug.** Every result scored ~0.03 regardless of
+match quality: a chunk ranked #1 in both dense and lexical search scores
+`1/61 + 1/61 ≈ 0.0328`, the near-theoretical max, and RRF's top-k is by
+construction dominated by consensus hits — so nearly everything that
+survives to the top 5 clusters tightly near that ceiling. Not fixable
+without changing what RRF *is*; instead exposed the underlying signal
+(`vector_distance` from LanceDB's `_distance`, `bm25_score` from
+`rank_bm25`) alongside the fused `score` in both `hybrid_search`'s return
+rows and the MCP `search_papers` tool output, so a caller that actually
+needs a confidence read can look past the fused number.
+
+All unit tests passing, `tests/test_build_prune.py` (new, covers both
+orphan-detection paths) and `tests/test_openalex.py` (new) added.
+
+## Update: acquire reliability hardening (0.3.0) — candidate fallback, relevance warning, 429 backoff
+
+Follow-up from the same live-usage session: `search` was rated reliably
+good, `acquire` was rated weaker than advertised, with three concrete
+failures that the 0.2.0 round above didn't touch (none of them were about
+score display or index staleness — they're about how `acquire` picks and
+fetches a candidate in the first place).
+
+**A vague topical query returned a confidently-wrong match, with nothing
+flagging it.** `resolve.find_oa_pdf` took the *first* hit with a `pdf_url`
+from each source's top-3 results — no relevance check against the query at
+all. A query like "permutation feature importance guided LLM tabular
+augmentation" matched the TabPFN paper on "permutation" appearing in an
+unrelated context (inference-time sampling, not feature importance); the
+user only caught it by manually reading the PDF. Rather than build a
+semantic matcher (no embedding backend lives in `acquire`'s path, and a
+topical query can legitimately have low title overlap even against a
+*correct* match — a smarter-looking heuristic would just move where it's
+wrong), went with the same "expose the honest signal, don't pretend to
+infer" call as the RRF score fix above: `resolve._relevance()` computes
+what fraction of the query's meaningful terms appear in the candidate's
+title+abstract, attached to each candidate as `relevance`; `cmd_acquire`
+now always prints `Matched: "<title>" (<year>)` and additionally prints a
+`WARNING: low keyword overlap` line to stderr when relevance is below 0.5
+(`resolve.RELEVANCE_WARN_THRESHOLD`) — visible whether a human or an agent
+is driving.
+
+**Semantic Scholar's 429 permanently skipped that source for the whole
+call.** `_safe()`'s only recourse was falling through to the next *source*
+— no intra-source retry, so one rate-limited request (common on the
+unauthenticated tier, per the "Bug 1" entry above) meant Semantic Scholar
+never got tried again for that query. Added a bounded retry
+(`semantic_scholar.search`, up to 2 extra attempts, honoring `Retry-After`
+if present else exponential backoff capped at 10s) — falls through to
+OpenAlex as before once genuinely exhausted.
+
+**A legitimate Unpaywall-found PDF hit a 403 with no fallback.** ACM
+blocked the scripted download of an otherwise-legal OA record; `cmd_acquire`
+had one candidate and no plan B. Rather than special-case an arXiv-mirror
+lookup (a narrower fix, new API surface), generalized the existing
+fallback-chain philosophy to cover download failures too:
+`resolve.find_oa_pdf_candidates` (new; `find_oa_pdf` is now a thin
+first-candidate wrapper over it) returns up to 5 ranked candidates instead
+of stopping at the first, and `cmd_acquire` tries them in download order,
+falling through on failure instead of giving up after one. Also fixed
+`download.fetch_pdf_bytes` retrying the *same* URL 3 times even on a
+permanent 401/403/404/410 — now fails fast on those and only retries
+transient errors, with a short backoff between attempts (there previously
+was none).
+
+Also updated `SKILL.md` to say plainly that `acquire` is a title/DOI
+resolver, not a topic-discovery tool — reinforcing, from direct use rather
+than just the doc's own stated boundary, the session's separate finding
+that WebSearch + arxiv-paper-fetch worked better than `acquire` for actual
+topical literature discovery.
+
+12 new/updated tests (`test_resolve.py` extended, new `test_download.py`,
+`test_semantic_scholar.py`, `test_acquire_fallback.py`), 41 total passing.
