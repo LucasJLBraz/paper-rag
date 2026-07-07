@@ -98,6 +98,38 @@ def test_hits_missing_both_doi_and_title_are_not_collapsed_together():
     assert len(results) == 2
 
 
+def test_dedup_fallback_key_is_unique_across_separate_source_hit_lists():
+    # Regression test for the id()-collision bug: the dedup fallback key used
+    # to be f"unique:{id(hit)}". Each source's hit list is only referenced
+    # inline during its own _collect(...) call in discover(), so once the
+    # first source's list is done being iterated, CPython is free to reuse
+    # its freed memory for the second source's hit dicts -- meaning two
+    # genuinely distinct doi/title-less hits from *different* source calls
+    # could get the same id() and collapse into one result.
+    #
+    # These two dicts are built as entirely separate objects returned from
+    # two separate mock .search() calls (semantic_scholar's list is fully
+    # consumed by _collect before openalex.search is even invoked), so this
+    # exercises the real "list goes out of scope between sources" pattern
+    # rather than relying on both lists staying alive together for the
+    # duration of the test. With the counter-based fallback, uniqueness is
+    # guaranteed by construction rather than by id()/lifetime luck.
+    s2_hit = {"title": "", "doi": None, "pdf_url": "https://s2.example.com/a.pdf", "abstract": ""}
+    openalex_hit = {"title": "", "doi": None, "pdf_url": "https://oa.example.com/b.pdf", "abstract": ""}
+
+    with patch(
+        "paper_rag.acquire.discover.semantic_scholar.search",
+        return_value=[s2_hit],
+    ), patch(
+        "paper_rag.acquire.discover.openalex.search",
+        return_value=[openalex_hit],
+    ):
+        results = discover.discover("some query", contact_email="test@example.com")
+
+    assert len(results) == 2
+    assert {r["source"] for r in results} == {"semantic_scholar", "openalex"}
+
+
 def test_one_source_failing_does_not_abort_the_other():
     with patch(
         "paper_rag.acquire.discover.semantic_scholar.search", side_effect=requests.HTTPError("429 rate limited")

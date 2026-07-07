@@ -7,6 +7,7 @@ choose from — see cli.py's `discover`/`get` commands and mcp_server.py's
 """
 from __future__ import annotations
 
+import itertools
 import re
 import sys
 
@@ -32,18 +33,18 @@ def _safe(fn, *args, default=None, **kwargs):
         return default
 
 
-def _dedup_key(hit: dict) -> str:
+def _dedup_key(hit: dict, fallback_id: int) -> str:
     doi = (hit.get("doi") or "").strip()
     if doi:
         return "doi:" + _DOI_PREFIX_RE.sub("", doi).lower()
     title = _WHITESPACE_RE.sub(" ", (hit.get("title") or "").strip().lower())
     if title:
         return "title:" + title
-    # Neither doi nor title: fall back to a key unique per hit object rather
-    # than colliding every such hit onto the same bare "title:" key. Safe
-    # within a single discover() call since source_hits stays referenced by
-    # _collect's caller for that call's duration.
-    return f"unique:{id(hit)}"
+    # Neither doi nor title: fall back to a key unique per hit rather than
+    # colliding every such hit onto the same bare "title:" key. fallback_id
+    # comes from a counter shared across the whole discover() call, so
+    # uniqueness holds by construction regardless of object lifetime.
+    return f"unique:{fallback_id}"
 
 
 def discover(query: str, contact_email: str, s2_api_key: str = "", limit: int = _DEFAULT_LIMIT) -> list[dict]:
@@ -55,10 +56,11 @@ def discover(query: str, contact_email: str, s2_api_key: str = "", limit: int = 
     """
     hits: list[dict] = []
     seen: set[str] = set()
+    counter = itertools.count()
 
     def _collect(source_hits, source_name: str) -> None:
         for hit in source_hits:
-            key = _dedup_key(hit)
+            key = _dedup_key(hit, next(counter))
             if key in seen:
                 continue
             seen.add(key)
