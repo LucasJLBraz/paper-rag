@@ -55,6 +55,53 @@ def test_discover_prints_numbered_list_and_writes_cache(tmp_path, capsys):
     assert (tmp_path / ".rag_index" / "discover_cache.json").exists()
 
 
+def test_discover_prints_truncated_abstract_snippet_when_present(tmp_path, capsys):
+    config_path = _write_config(tmp_path)
+    long_abstract = "This paper explores tensor decomposition. " * 10
+    results = [
+        {
+            "title": "Multilinear SVD for ECG",
+            "authors": ["Silva"],
+            "year": 2019,
+            "doi": "10.1/a",
+            "source": "semantic_scholar",
+            "relevance": 0.71,
+            "has_pdf": True,
+            "abstract": long_abstract,
+        },
+    ]
+
+    with patch("paper_rag.acquire.discover.discover", return_value=results):
+        cmd_discover(argparse.Namespace(config=str(config_path), query="tensor ecg", limit=10))
+
+    out = capsys.readouterr().out
+    assert long_abstract[:240] in out
+    assert "..." in out
+    # must not print the full (untruncated) abstract
+    assert long_abstract.strip() not in out
+
+
+def test_discover_omits_abstract_line_when_missing(tmp_path, capsys):
+    config_path = _write_config(tmp_path)
+    results = [
+        {
+            "title": "Multilinear SVD for ECG",
+            "authors": ["Silva"],
+            "year": 2019,
+            "doi": "10.1/a",
+            "source": "semantic_scholar",
+            "relevance": 0.71,
+            "has_pdf": True,
+        },
+    ]
+
+    with patch("paper_rag.acquire.discover.discover", return_value=results):
+        cmd_discover(argparse.Namespace(config=str(config_path), query="tensor ecg", limit=10))
+
+    out = capsys.readouterr().out
+    assert "None" not in out
+
+
 def test_discover_reports_no_results(tmp_path, capsys):
     config_path = _write_config(tmp_path)
 
