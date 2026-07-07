@@ -85,6 +85,23 @@ def test_errors_when_download_fails(tmp_path):
     assert "Download failed" in result["error"]
 
 
+def test_errors_when_post_download_save_fails(tmp_path):
+    with patch("paper_rag.acquire.get.download.fetch_pdf_bytes", return_value=b"%PDF-1.4"), patch(
+        "paper_rag.acquire.get.metadata.write_metadata", side_effect=Exception("disk full")
+    ):
+        result = get.download_candidate(
+            _hit(),
+            contact_email="test@example.com",
+            papers_dir=tmp_path / "papers",
+            root=tmp_path,
+            citation_key=None,
+            fallback_title="query text",
+        )
+
+    assert result["status"] == "error"
+    assert "Failed to save downloaded PDF" in result["error"]
+
+
 def test_honors_citation_key_override(tmp_path):
     with patch("paper_rag.acquire.get.download.fetch_pdf_bytes", return_value=b"%PDF-1.4"):
         result = get.download_candidate(

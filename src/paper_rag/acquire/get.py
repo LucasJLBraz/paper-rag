@@ -47,25 +47,29 @@ def download_candidate(
     except Exception as e:
         return {"status": "error", "error": f"Download failed: {e!r}"}
 
-    resolved_citation_key = citation_key or metadata.make_citation_key(
-        hit.get("title") or fallback_title, hit.get("authors", []), hit.get("year")
-    )
-    papers_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = papers_dir / f"{resolved_citation_key}.pdf"
-    md_path = papers_dir / f"{resolved_citation_key}.md"
-    pdf_path.write_bytes(pdf_content)
-    metadata.write_metadata(
-        md_path,
-        resolved_citation_key,
-        hit.get("title") or fallback_title,
-        hit.get("authors", []),
-        hit.get("year"),
-        hit.get("doi"),
-        source,
-        pdf_url,
-        pdf_path.relative_to(root),
-        hit.get("abstract") or "",
-    )
+    try:
+        resolved_citation_key = citation_key or metadata.make_citation_key(
+            hit.get("title") or fallback_title, hit.get("authors", []), hit.get("year")
+        )
+        papers_dir.mkdir(parents=True, exist_ok=True)
+        pdf_path = papers_dir / f"{resolved_citation_key}.pdf"
+        md_path = papers_dir / f"{resolved_citation_key}.md"
+        pdf_path.write_bytes(pdf_content)
+        metadata.write_metadata(
+            md_path,
+            resolved_citation_key,
+            hit.get("title") or fallback_title,
+            hit.get("authors", []),
+            hit.get("year"),
+            hit.get("doi"),
+            source,
+            pdf_url,
+            pdf_path.relative_to(root),
+            hit.get("abstract") or "",
+        )
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to save downloaded PDF: {e!r}"}
+
     return {
         "status": "ok",
         "citation_key": resolved_citation_key,
