@@ -14,6 +14,11 @@ import pyarrow as pa
 
 
 class PaperIndex:
+    """Thin wrapper around a single LanceDB table: opens/creates it with a
+    fixed chunk schema, refuses to reopen a table built with a different
+    embedding model (see `open_or_create`), and exposes the add/search/
+    delete/list operations `cli.py` and `search.py` need."""
+
     def __init__(self, index_dir: Path, table_name: str, embedding_dim: int, embedding_model: str):
         self.index_dir = index_dir
         self.table_name = table_name

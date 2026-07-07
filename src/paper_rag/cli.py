@@ -46,6 +46,10 @@ def _open_index(cfg):
 
 
 def cmd_init(args):
+    """One-shot repo setup: writes `.paper-rag.toml` (only if absent), always
+    refreshes `.claude/skills/paper-rag/SKILL.md` and the `paper-rag` entry
+    in `.mcp.json` to the installed version, and adds the index dir to
+    `.gitignore`. Safe to re-run any time — never overwrites the config."""
     repo_root = Path(args.dir).resolve() if args.dir else Path.cwd()
     data = resources.files("paper_rag.data")
 
@@ -111,6 +115,11 @@ def cmd_init(args):
 
 
 def cmd_build(args):
+    """Incremental ingest: hashes every PDF in `papers_dir`, skips ones
+    already in the manifest (unless `--rebuild`), and prunes citation_keys
+    whose PDF no longer exists from both the index and the manifest. A
+    single paper's conversion/embedding failure is logged and skipped
+    rather than aborting the whole batch."""
     cfg = load_config(args.config)
     papers_dir = cfg.root / cfg.corpus.papers_dir
     index_dir = cfg.root / cfg.index.dir
@@ -197,6 +206,9 @@ def cmd_build(args):
 
 
 def cmd_search(args):
+    """Embed `args.query`, run `hybrid_search` against the local index, and
+    print the top-k results with the fused score plus whichever raw
+    per-method signal (vector_distance/bm25_score) each result matched on."""
     cfg = load_config(args.config)
     backend, index, table = _open_index(cfg)
     [vector] = backend.embed([args.query], is_query=True)
@@ -223,6 +235,11 @@ def cmd_search(args):
 
 
 def cmd_discover(args):
+    """Topical search across Semantic Scholar + OpenAlex via `discover()`.
+    Prints a numbered, ranked candidate list (title, authors, year, source,
+    relevance, OA availability, abstract snippet) and writes it to
+    `discover_cache.json` so `paper-rag get <id>` can resolve it later —
+    does not download anything itself."""
     cfg = load_config(args.config)
     from .acquire import cache, discover
 
@@ -255,6 +272,10 @@ def cmd_discover(args):
 
 
 def cmd_get(args):
+    """Download one or more candidates from the last `discover` call by id,
+    reading `discover_cache.json` and resolving via Unpaywall on demand only
+    for the ids actually requested. Exits non-zero if any requested id
+    fails (missing from cache, or download error)."""
     cfg = load_config(args.config)
     from .acquire import cache, get as get_mod
 
@@ -302,6 +323,12 @@ def cmd_get(args):
 
 
 def cmd_acquire(args):
+    """Title/DOI resolver: finds a legally open-access PDF for `args.query`
+    via `find_oa_pdf_candidates` (Semantic Scholar -> OpenAlex -> Unpaywall),
+    falling through candidates if a download fails, then writes the PDF and
+    its companion `.md` metadata into `papers_dir`. Not a topic search — use
+    `discover`/`get` for that; this picks a single best match and warns if
+    the match's relevance score is low."""
     cfg = load_config(args.config)
     from .acquire import download, metadata, resolve
 

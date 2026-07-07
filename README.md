@@ -1,5 +1,9 @@
 # paper-rag
 
+[![CI](https://github.com/LucasJLBraz/paper-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/LucasJLBraz/paper-rag/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python >= 3.10](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)
+
 Local, embedded RAG over a folder of PDFs, built for Claude Code research
 repos: retrieve the relevant chunks of a paper instead of re-reading whole
 PDFs on every synthesis turn, and pull in new open-access papers without ad
@@ -25,8 +29,20 @@ on-machine; no PDF content or query ever leaves your computer.
   fails (e.g. a publisher blocking scripted access), and flags a
   low-confidence match instead of silently trusting the first hit.
 - **Claude Code native** — an MCP server (`search_papers`,
-  `list_indexed_papers`) plus a CLI, both installed by one `paper-rag init`
-  run per project.
+  `list_indexed_papers`, `discover_papers`, `get_paper`) plus a CLI, both
+  installed by one `paper-rag init` run per project.
+
+## Contents
+
+- [Install](#install)
+- [Quickstart](#quickstart)
+- [CLI command reference](#cli-command-reference)
+- [How it works](#how-it-works)
+- [Performance](#performance)
+- [Why the index isn't portable](#why-the-index-isnt-portable)
+- [Configuration](#configuration-paper-ragtoml)
+- [Companion metadata files](#companion-metadata-files)
+- [Development](#development)
 
 ## Install
 
@@ -74,8 +90,9 @@ artifact — see [Why the index isn't portable](#why-the-index-isnt-portable) �
 that should never end up in a commit).
 
 Inside Claude Code, `.mcp.json` registers the `paper-rag` MCP server so
-`search_papers` / `list_indexed_papers` are called as native tools — no
-shelling out needed. **Restart Claude Code (or reconnect MCP servers)
+`search_papers` / `list_indexed_papers` / `discover_papers` / `get_paper`
+are called as native tools — no shelling out needed. **Restart Claude Code
+(or reconnect MCP servers)
 after running `init`** so it picks up the newly-registered server; it won't
 appear in an already-running session. The bundled Claude Code skill
 (copied into `.claude/skills/paper-rag/` by `init`) documents when to use
@@ -100,10 +117,26 @@ retrieval vs. a full PDF read vs. acquisition.
   progress per paper as it goes. Give it the couple of minutes the table
   below suggests before assuming it's hung.
 
+## CLI command reference
+
+Every command also has a matching `--help`; this table is for scanning at
+a glance. `--config PATH` (before the subcommand) overrides the
+auto-discovered `.paper-rag.toml` for all of them.
+
+| command | what it does | key flags |
+|---|---|---|
+| `paper-rag init` | One-shot repo setup — see [Quickstart](#quickstart) | `--dir PATH`, `--email ADDR` |
+| `paper-rag build` | Ingest new/changed PDFs into the local index | `--rebuild` (force full re-ingestion) |
+| `paper-rag search "<query>"` | Query the local index, print top-k chunks | `-k N` (default 5), `--paper CITATION_KEY` |
+| `paper-rag discover "<query>"` | Topical search across Semantic Scholar + OpenAlex; lists candidates, downloads nothing | `--limit N` (default 10) |
+| `paper-rag get <id> [<id> ...]` | Download one or more candidates from the last `discover`, by id | `--citation-key KEY` (single id only) |
+| `paper-rag acquire "<query>"` | Resolve + download one open-access PDF by title/DOI (not a topic search — see [How it works](#how-it-works)) | `--citation-key KEY` |
+
 ## How it works
 
-**Ingestion** (`paper-rag build`) turns each PDF into embedded, searchable
-chunks:
+### Ingestion
+
+`paper-rag build` turns each PDF into embedded, searchable chunks:
 
 ```mermaid
 flowchart LR
@@ -127,9 +160,10 @@ to force full re-ingestion, e.g. after switching embedding models. Every
 have a PDF in `papers_dir` — from both the LanceDB table and the manifest —
 so deleting a paper doesn't leave stale, unsearchable chunks behind.
 
-**Retrieval** (`paper-rag search` / the MCP `search_papers` tool) queries
-two independent indexes and merges the rankings, rather than trusting
-either alone:
+### Retrieval
+
+`paper-rag search` / the MCP `search_papers` tool queries two independent
+indexes and merges the rankings, rather than trusting either alone:
 
 ```mermaid
 flowchart LR
@@ -157,9 +191,11 @@ and/or `bm25_score`, whichever method(s) actually matched it) alongside
 the fused `score`, so you can look past the fused number when you need an
 actual sense of match strength.
 
-**Acquisition** (`paper-rag acquire`) resolves a query to a downloadable
-PDF via the same Semantic Scholar -> OpenAlex -> Unpaywall chain, but
-matches by title/DOI, not topic — it has no semantic relevance ranking, so
+### Acquisition
+
+`paper-rag acquire` resolves a query to a downloadable PDF via the same
+Semantic Scholar -> OpenAlex -> Unpaywall chain, but matches by title/DOI,
+not topic — it has no semantic relevance ranking, so
 a vague topical query can land on an unrelated paper that happens to share
 a keyword. Two things guard against trusting a bad match silently: it
 collects up to 5 ranked candidates instead of one, falling through to the
@@ -170,8 +206,10 @@ shares few terms with the query. For actual topic-level discovery ("find
 papers about X"), use `paper-rag discover` instead — `acquire` is a
 resolver for a paper you can already name, not a literature search engine.
 
-**Discovery** (`paper-rag discover` / the MCP `discover_papers` tool)
-covers that other case: a free-text topical query returns a ranked,
+### Discovery
+
+`paper-rag discover` / the MCP `discover_papers` tool covers that other
+case: a free-text topical query returns a ranked,
 deduplicated list of candidates from Semantic Scholar + OpenAlex (title,
 authors, year, source, relevance, and whether a PDF is directly
 available), cached locally by sequential id. `paper-rag get <id> [<id>
@@ -187,7 +225,9 @@ i5-1135G7 laptop CPU, no GPU) — real numbers from this corpus, not
 estimates. Full investigation, including three reranker models that were
 tried and reverted, in [HANDOFF.md](HANDOFF.md).
 
-**Retrieval quality.** Hit Rate@5 on a 45-question benchmark (specific
+### Retrieval quality
+
+Hit Rate@5 on a 45-question benchmark (specific
 table values, hyperparameters, named methods — deliberately harder than
 typical conceptual questions) against 3 held-out papers:
 
@@ -210,9 +250,10 @@ the full miss analysis. Ordinary conceptual questions ("how does X work,"
 "what baselines does this use") retrieve more reliably than this
 adversarial benchmark suggests in isolation.
 
-**Embedding speed.** CPU throughput was the deciding factor in the default
-model — this machine has no CUDA GPU, so a full corpus rebuild has to be
-tolerable on CPU alone:
+### Embedding speed
+
+CPU throughput was the deciding factor in the default model — this machine
+has no CUDA GPU, so a full corpus rebuild has to be tolerable on CPU alone:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/speed-dark.svg">
@@ -224,15 +265,17 @@ because queries against a mixed-language corpus need cross-lingual
 query→passage matching — an English-only model can't do that, silently
 breaking non-English queries against English papers.
 
-**Token usage, vs. Claude reading the full paper directly** — see the chart
-at the top of this README: **~22x fewer tokens** per targeted query (~1,250
-vs. ~28,000 for a full paper). Even a research session running ~10 targeted
-queries against one paper — a realistic upper bound for pulling out several
-specific facts — costs ~12,500 tokens: still well under a single full read,
-and each query returns exactly the relevant passage instead of requiring
-Claude to re-scan the whole paper's context on every turn.
+### Token usage, vs. Claude reading the full paper directly
 
-**Latency:**
+See the chart at the top of this README: **~22x fewer tokens** per
+targeted query (~1,250 vs. ~28,000 for a full paper). Even a research
+session running ~10 targeted queries against one paper — a realistic upper
+bound for pulling out several specific facts — costs ~12,500 tokens: still
+well under a single full read, and each query returns exactly the relevant
+passage instead of requiring Claude to re-scan the whole paper's context on
+every turn.
+
+### Latency
 
 | operation | cost |
 |---|---|

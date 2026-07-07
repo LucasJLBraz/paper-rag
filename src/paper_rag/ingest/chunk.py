@@ -197,6 +197,10 @@ def chunk_markdown(
     overlap_tokens: int = 60,
     drop_references: bool = True,
 ) -> list[Chunk]:
+    """Split converted markdown into `Chunk`s ready to embed: section split
+    first (heading-bounded, References dropped by default), then each
+    section is token-bounded with overlap, with tables broken into small,
+    self-contained row batches instead of one indivisible blob."""
     result: list[Chunk] = []
     for heading, body in split_sections(markdown, drop_references=drop_references):
         for piece in chunk_text(body, max_tokens, overlap_tokens):

@@ -13,6 +13,12 @@ import requests
 
 
 class EmbeddingBackend(Protocol):
+    """Common interface `SentenceTransformerBackend`/`OllamaBackend` implement:
+    `name` and `dim` identify the model (checked against a stored index's
+    `embedding_model` to reject a mismatched-model reopen), and `embed`
+    turns texts into vectors, with `is_query` distinguishing query vs.
+    passage encoding for models that need asymmetric prefixes."""
+
     name: str
     dim: int
 
@@ -59,6 +65,9 @@ class OllamaBackend:
 
 
 def build_backend(backend: str, model: str, ollama_host: str = "http://localhost:11434") -> EmbeddingBackend:
+    """Factory: builds the configured `EmbeddingBackend` from
+    `.paper-rag.toml`'s `[embedding]` section (`backend` = "sentence-transformers"
+    or "ollama"). Raises `ValueError` on an unrecognized backend name."""
     if backend == "sentence-transformers":
         return SentenceTransformerBackend(model)
     if backend == "ollama":
