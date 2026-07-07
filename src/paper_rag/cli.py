@@ -240,6 +240,10 @@ def cmd_discover(args):
         authors = ", ".join(hit.get("authors") or []) or "unknown authors"
         print(f"[{i}] (relevance={hit['relevance']:.2f}, OA: {oa})  {hit.get('title') or '(no title)'}")
         print(f"    {authors}, {hit.get('year') or 'n.d.'} — {hit['source']} — doi: {hit.get('doi') or 'n/a'}")
+        abstract = (hit.get("abstract") or "").strip()
+        if abstract:
+            snippet = abstract[:240] + ("..." if len(abstract) > 240 else "")
+            print(f"    {snippet}")
 
     cache_path = index_dir / "discover_cache.json"
     print(f"\nCached {len(results)} result(s) -> {cache_path.relative_to(cfg.root)}", file=sys.stderr)

@@ -16,6 +16,11 @@ this tool for.
 - `acquire` is unchanged — it remains the title/DOI resolver for a paper
   you can already name. Docs (README, SKILL.md) now point topical queries
   at `discover`/`get` instead of WebSearch/`arxiv-paper-fetch`.
+- `paper-rag discover`'s CLI output now prints a truncated abstract
+  snippet (240 chars) under each candidate, when the source API returned
+  one — the abstract already flowed through `discover()`/the cache/the
+  MCP `discover_papers` tool, but the CLI's own printed list didn't show
+  it, leaving title/authors/year as the only signal for picking an id.
 
 ## 0.3.2
 
