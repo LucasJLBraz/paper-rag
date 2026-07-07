@@ -32,12 +32,13 @@ def download_candidate(
     if not pdf_url and hit.get("doi"):
         try:
             oa = unpaywall.resolve(hit["doi"], contact_email)
+            if oa:
+                resolved_pdf_url = oa.get("pdf_url")
+                if resolved_pdf_url:
+                    pdf_url = resolved_pdf_url
+                    source = "unpaywall"
         except Exception as e:
             return {"status": "error", "error": f"Unpaywall lookup failed: {e!r}"}
-        if oa:
-            pdf_url = oa["pdf_url"]
-            source = "unpaywall"
-
     if not pdf_url:
         title = hit.get("title") or "(no title)"
         return {"status": "error", "error": f'No open-access PDF available for "{title}" — try downloading it manually.'}
