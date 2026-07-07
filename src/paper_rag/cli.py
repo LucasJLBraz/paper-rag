@@ -251,6 +251,51 @@ def cmd_discover(args):
     )
 
 
+def cmd_get(args):
+    cfg = load_config(args.config)
+    from .acquire import cache, get as get_mod
+
+    if args.citation_key and len(args.ids) > 1:
+        print("--citation-key can only be used when downloading a single id.", file=sys.stderr)
+        sys.exit(1)
+
+    index_dir = cfg.root / cfg.index.dir
+    try:
+        cached = cache.read_cache(index_dir)
+    except cache.CacheMissError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+    papers_dir = cfg.root / cfg.corpus.papers_dir
+    succeeded = 0
+    failed = 0
+    for result_id in args.ids:
+        hit = cache.get_result(cached, result_id)
+        if hit is None:
+            print(f"[{result_id}] No such id in the discover cache — run `paper-rag discover` again.", file=sys.stderr)
+            failed += 1
+            continue
+
+        result = get_mod.download_candidate(
+            hit,
+            contact_email=cfg.acquire.contact_email,
+            papers_dir=papers_dir,
+            root=cfg.root,
+            citation_key=args.citation_key,
+            fallback_title=cached.get("query", ""),
+        )
+        if result["status"] == "ok":
+            print(f"[{result_id}] Downloaded via {result['source']}: {result['pdf_path']} (citation key: {result['citation_key']})")
+            succeeded += 1
+        else:
+            print(f"[{result_id}] {result['error']}", file=sys.stderr)
+            failed += 1
+
+    print(f"\n{succeeded} downloaded, {failed} failed", file=sys.stderr)
+    if failed:
+        sys.exit(1)
+
+
 def cmd_acquire(args):
     cfg = load_config(args.config)
     from .acquire import download, metadata, resolve
@@ -313,8 +358,8 @@ def cmd_acquire(args):
         print(
             f"  WARNING: low keyword overlap (relevance={hit['relevance']:.2f}) between your query and "
             "the matched title/abstract. `acquire` matches by title/DOI, not topic — verify this is "
-            "actually the paper you meant before citing it. For topical/discovery searches, prefer "
-            "WebSearch or arxiv-paper-fetch instead.",
+            "actually the paper you meant before citing it. For topical/discovery searches, use "
+            "`paper-rag discover` instead.",
             file=sys.stderr,
         )
     print(f"Metadata: {md_path.relative_to(cfg.root)}")
@@ -357,6 +402,11 @@ def main():
     p_discover.add_argument("query", help="Free-text topic description")
     p_discover.add_argument("--limit", type=int, default=10)
     p_discover.set_defaults(func=cmd_discover)
+
+    p_get = sub.add_parser("get", help="Download one or more candidates from the last `discover` by id")
+    p_get.add_argument("ids", type=int, nargs="+")
+    p_get.add_argument("--citation-key", default=None, help="Override the auto-generated citation key (single id only)")
+    p_get.set_defaults(func=cmd_get)
 
     p_acquire = sub.add_parser("acquire", help="Find + download a legally open-access paper")
     p_acquire.add_argument("query", help="Title or free-text query")
