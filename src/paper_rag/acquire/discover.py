@@ -37,7 +37,13 @@ def _dedup_key(hit: dict) -> str:
     if doi:
         return "doi:" + _DOI_PREFIX_RE.sub("", doi).lower()
     title = _WHITESPACE_RE.sub(" ", (hit.get("title") or "").strip().lower())
-    return "title:" + title
+    if title:
+        return "title:" + title
+    # Neither doi nor title: fall back to a key unique per hit object rather
+    # than colliding every such hit onto the same bare "title:" key. Safe
+    # within a single discover() call since source_hits stays referenced by
+    # _collect's caller for that call's duration.
+    return f"unique:{id(hit)}"
 
 
 def discover(query: str, contact_email: str, s2_api_key: str = "", limit: int = _DEFAULT_LIMIT) -> list[dict]:

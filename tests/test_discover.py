@@ -85,6 +85,19 @@ def test_has_pdf_flag_reflects_direct_pdf_url_only():
     assert by_doi["10.1/b"] is False
 
 
+def test_hits_missing_both_doi_and_title_are_not_collapsed_together():
+    with patch(
+        "paper_rag.acquire.discover.semantic_scholar.search",
+        return_value=[{"title": "", "doi": None, "pdf_url": "https://s2.example.com/a.pdf", "abstract": ""}],
+    ), patch(
+        "paper_rag.acquire.discover.openalex.search",
+        return_value=[{"doi": None, "pdf_url": "https://oa.example.com/b.pdf", "abstract": ""}],
+    ):
+        results = discover.discover("some query", contact_email="test@example.com")
+
+    assert len(results) == 2
+
+
 def test_one_source_failing_does_not_abort_the_other():
     with patch(
         "paper_rag.acquire.discover.semantic_scholar.search", side_effect=requests.HTTPError("429 rate limited")
