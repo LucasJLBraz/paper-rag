@@ -167,9 +167,18 @@ next if a candidate's PDF fails to download (a publisher blocking scripted
 access doesn't necessarily mean every open-access copy is unreachable);
 and it prints a low-confidence warning when the matched title/abstract
 shares few terms with the query. For actual topic-level discovery ("find
-papers about X"), prefer WebSearch or an arXiv-specific tool — `acquire` is
-a resolver for a paper you can already name, not a literature search
-engine.
+papers about X"), use `paper-rag discover` instead — `acquire` is a
+resolver for a paper you can already name, not a literature search engine.
+
+**Discovery** (`paper-rag discover` / the MCP `discover_papers` tool)
+covers that other case: a free-text topical query returns a ranked,
+deduplicated list of candidates from Semantic Scholar + OpenAlex (title,
+authors, year, source, relevance, and whether a PDF is directly
+available), cached locally by sequential id. `paper-rag get <id> [<id>
+...]` (or the MCP `get_paper` tool) then downloads one or more chosen
+candidates from that cache — resolving via Unpaywall on demand for
+candidates that only have a DOI, so that lookup only happens for papers
+actually requested, not every candidate shown.
 
 ## Performance
 
@@ -303,11 +312,11 @@ pdf: references/Papers/kim2025epic.pdf
 ...
 ```
 
-`paper-rag acquire` writes this automatically. If you're pulling in arXiv
-papers, use a dedicated arXiv-fetch tool for those instead (this schema is
-compatible with one) — `paper-rag acquire` is for everything Semantic
-Scholar / OpenAlex / Unpaywall can resolve that arXiv-specific tooling
-can't.
+`paper-rag acquire` and `paper-rag get` both write this automatically. If
+you're pulling in arXiv papers, use a dedicated arXiv-fetch tool for those
+instead (this schema is compatible with one) — `paper-rag acquire` /
+`discover`+`get` are for everything Semantic Scholar / OpenAlex /
+Unpaywall can resolve that arXiv-specific tooling can't.
 
 ## Development
 

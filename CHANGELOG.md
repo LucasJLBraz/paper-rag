@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0
+
+Adds the topical-discovery flow that 0.3.0's docs pointed users away from
+this tool for.
+
+- Add: `paper-rag discover "<topic>"` (CLI) and `discover_papers` (MCP) —
+  a genuine topical search across Semantic Scholar + OpenAlex. Returns a
+  ranked, deduplicated, numbered list of candidates (title, authors, year,
+  source, relevance, OA availability) instead of auto-picking one, and
+  caches the list locally.
+- Add: `paper-rag get <id> [<id> ...]` (CLI) and `get_paper` (MCP) —
+  downloads one or more candidates from the last `discover` by id,
+  resolving via Unpaywall on demand only for the ids actually requested.
+- `acquire` is unchanged — it remains the title/DOI resolver for a paper
+  you can already name. Docs (README, SKILL.md) now point topical queries
+  at `discover`/`get` instead of WebSearch/`arxiv-paper-fetch`.
+
 ## 0.3.2
 
 - Fix: `paper-rag search` (the CLI) never actually printed the raw `vector_distance`/`bm25_score` fields added in 0.2.0 — they were only wired into `hybrid_search`'s return value and the MCP `search_papers` tool output, not the CLI's own print statement. The fused `score` alone was still all a CLI user ever saw. Now prints whichever of `vector_distance`/`bm25_score` are present per result, plus a one-line explanation of which direction is "better" for each (lower vector_distance, higher bm25_score).
