@@ -1,8 +1,10 @@
-"""CLI: paper-rag init | build | search | acquire
+"""CLI: paper-rag init | build | search | discover | get | acquire
 
     paper-rag init
     paper-rag build [--rebuild]
     paper-rag search "<query>" [-k N] [--paper CITATION_KEY]
+    paper-rag discover "<query>" [--limit N]
+    paper-rag get <id> [<id> ...] [--citation-key KEY]
     paper-rag acquire "<query>" [--citation-key KEY]
 """
 from __future__ import annotations
@@ -220,6 +222,35 @@ def cmd_search(args):
         print()
 
 
+def cmd_discover(args):
+    cfg = load_config(args.config)
+    from .acquire import cache, discover
+
+    results = discover.discover(
+        args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key, limit=args.limit
+    )
+    if not results:
+        print("No results found across Semantic Scholar / OpenAlex for this query.", file=sys.stderr)
+        return
+
+    index_dir = cfg.root / cfg.index.dir
+    cache.write_cache(index_dir, args.query, results)
+
+    for i, hit in enumerate(results, start=1):
+        oa = "yes" if hit["has_pdf"] else "no"
+        authors = ", ".join(hit.get("authors") or []) or "unknown authors"
+        print(f"[{i}] (relevance={hit['relevance']:.2f}, OA: {oa})  {hit.get('title') or '(no title)'}")
+        print(f"    {authors}, {hit.get('year') or 'n.d.'} — {hit['source']} — doi: {hit.get('doi') or 'n/a'}")
+
+    cache_path = index_dir / "discover_cache.json"
+    print(f"\nCached {len(results)} result(s) -> {cache_path.relative_to(cfg.root)}", file=sys.stderr)
+    print(
+        "Run `paper-rag get <id> [<id> ...]` to download one or more "
+        '(only "OA: yes" is guaranteed downloadable; others are resolved on demand).',
+        file=sys.stderr,
+    )
+
+
 def cmd_acquire(args):
     cfg = load_config(args.config)
     from .acquire import download, metadata, resolve
@@ -319,6 +350,13 @@ def main():
     p_search.add_argument("-k", type=int, default=5)
     p_search.add_argument("--paper", default=None, help="Restrict results to one citation_key")
     p_search.set_defaults(func=cmd_search)
+
+    p_discover = sub.add_parser(
+        "discover", help="Topical search across Semantic Scholar/OpenAlex; lists candidates without downloading"
+    )
+    p_discover.add_argument("query", help="Free-text topic description")
+    p_discover.add_argument("--limit", type=int, default=10)
+    p_discover.set_defaults(func=cmd_discover)
 
     p_acquire = sub.add_parser("acquire", help="Find + download a legally open-access paper")
     p_acquire.add_argument("query", help="Title or free-text query")
