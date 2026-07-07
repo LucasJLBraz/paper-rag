@@ -18,6 +18,11 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
+def _yaml_double_quote(text: str) -> str:
+    """Escape backslashes and double-quotes for a YAML double-quoted scalar."""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def make_citation_key(title: str, authors: list[str], year) -> str:
     surname = _slug(authors[0].split()[-1]) if authors else "unknown"
     year = year or "nd"
@@ -43,7 +48,7 @@ def write_metadata(
         "---\n"
         f"citation_key: {citation_key}\n"
         f"doi: {doi or ''}\n"
-        f'title: "{title}"\n'
+        f'title: "{_yaml_double_quote(title)}"\n'
         f"authors:\n{authors_yaml}\n"
         f"published: {year or 'n.d.'}\n"
         f"source: {source}\n"
