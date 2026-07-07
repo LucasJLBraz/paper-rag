@@ -9,14 +9,13 @@ to the next candidate for the same query instead of giving up outright.
 """
 from __future__ import annotations
 
-import re
 import sys
 
 import requests
 
 from . import openalex, semantic_scholar, unpaywall
+from .relevance import relevance as _relevance
 
-_TOKEN_RE = re.compile(r"[a-z0-9]{3,}")
 _MAX_CANDIDATES = 5
 
 # `acquire` matches by title/DOI, not topic — it has no real relevance
@@ -38,16 +37,6 @@ def _safe(fn, *args, default=None, **kwargs):
         source = fn.__module__.rsplit(".", 1)[-1]
         print(f"  ({source} lookup failed, skipping: {e})", file=sys.stderr)
         return default
-
-
-def _relevance(query: str, hit: dict) -> float:
-    """Fraction of the query's meaningful terms found in the hit's title + abstract."""
-    query_terms = set(_TOKEN_RE.findall(query.lower()))
-    if not query_terms:
-        return 1.0
-    haystack = f"{hit.get('title') or ''} {hit.get('abstract') or ''}".lower()
-    haystack_terms = set(_TOKEN_RE.findall(haystack))
-    return len(query_terms & haystack_terms) / len(query_terms)
 
 
 def find_oa_pdf_candidates(query: str, contact_email: str, s2_api_key: str = "") -> list[dict]:

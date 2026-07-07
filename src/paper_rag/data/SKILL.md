@@ -1,6 +1,6 @@
 ---
 name: paper-rag
-description: Local hybrid (dense + BM25) semantic search over this repo's configured paper corpus (retrieval instead of full-text PDF reads) plus open-access paper acquisition beyond arXiv (Semantic Scholar, OpenAlex, Unpaywall). Use this to find relevant passages across the paper corpus ("what do our papers say about X") instead of re-reading whole PDFs, and to download a non-arXiv paper (journal PDF, DOI) into the papers directory with a companion metadata file. If this project has an arxiv-paper-fetch skill, use that for arXiv papers specifically — this skill defers to it rather than duplicating it.
+description: Local hybrid (dense + BM25) semantic search over this repo's configured paper corpus (retrieval instead of full-text PDF reads) plus open-access paper discovery and acquisition beyond arXiv (Semantic Scholar, OpenAlex, Unpaywall). Use this to find relevant passages across the paper corpus ("what do our papers say about X") instead of re-reading whole PDFs, to run a topical search that lists ranked candidate papers to choose from (discover_papers/get_paper, or `paper-rag discover`/`get`), and to download a specific known non-arXiv paper (journal PDF, DOI) into the papers directory with a companion metadata file (acquire). If this project has an arxiv-paper-fetch skill, use that for arXiv papers specifically — this skill defers to it rather than duplicating it.
 ---
 
 # paper-rag
@@ -25,10 +25,16 @@ without ad hoc curl/requests.
   when its match shares few terms with your query — read both before
   trusting the result. If this repo has an `arxiv-paper-fetch` skill and
   the paper is on arXiv, use that instead — don't route arXiv papers
-  through this tool.
+  through this tool. For a topical query where you don't already have one
+  specific title in mind, use discovery (above) instead.
 - **Topical/discovery search** ("find papers about X" with no specific
-  title in mind): use WebSearch or `arxiv-paper-fetch`, not `acquire` —
-  `acquire` is a title/DOI resolver, not a literature-discovery tool.
+  title in mind): call the `discover_papers` MCP tool (or `paper-rag
+  discover "<topic>"` from a shell) — it returns a ranked, numbered list of
+  candidates instead of guessing one. Show the list to the user, then call
+  `get_paper(ids=[...])` (or `paper-rag get <id> [<id> ...]`) for the
+  one(s) they pick. Don't use `acquire` for this — it's a title/DOI
+  resolver with no topical ranking, and can silently match an unrelated
+  paper that happens to share a keyword.
 - **Close reading of one specific paper** (verifying an exact quote,
   citation-integrity checks): still read the PDF directly. Retrieval is for
   synthesis across/within papers, not a replacement for checking a precise

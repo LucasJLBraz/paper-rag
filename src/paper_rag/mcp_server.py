@@ -67,6 +67,64 @@ def list_indexed_papers() -> list[str]:
     return sorted(df["citation_key"].unique().tolist()) if len(df) else []
 
 
+@mcp.tool()
+def discover_papers(query: str, limit: int = 10) -> list[dict]:
+    """Topical search across Semantic Scholar + OpenAlex (not a title/DOI match).
+
+    Returns up to `limit` ranked, deduplicated candidates, each with title,
+    authors, year, doi, source, relevance, has_pdf, and id. Results are
+    cached locally — call get_paper(ids=[...]) to download chosen ones.
+    """
+    cfg = load_config()
+    from .acquire import cache, discover
+
+    results = discover.discover(query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key, limit=limit)
+    index_dir = cfg.root / cfg.index.dir
+    cache.write_cache(index_dir, query, results)
+    return [{**hit, "id": i} for i, hit in enumerate(results, start=1)]
+
+
+@mcp.tool()
+def get_paper(ids: list[int], citation_key: str | None = None) -> list[dict]:
+    """Download one or more discover_papers() candidates by id.
+
+    citation_key is only honored for a single id. Returns one dict per
+    requested id: {id, status: "ok"|"error", citation_key, pdf_path,
+    source, error}.
+    """
+    cfg = load_config()
+    from .acquire import cache, get as get_mod
+
+    ids = list(dict.fromkeys(ids))
+
+    if citation_key and len(ids) > 1:
+        return [{"id": i, "status": "error", "error": "citation_key can only be used with a single id"} for i in ids]
+
+    index_dir = cfg.root / cfg.index.dir
+    try:
+        cached = cache.read_cache(index_dir)
+    except cache.CacheMissError as e:
+        return [{"id": i, "status": "error", "error": str(e)} for i in ids]
+
+    papers_dir = cfg.root / cfg.corpus.papers_dir
+    out = []
+    for result_id in ids:
+        hit = cache.get_result(cached, result_id)
+        if hit is None:
+            out.append({"id": result_id, "status": "error", "error": "no such id in the discover cache"})
+            continue
+        result = get_mod.download_candidate(
+            hit,
+            contact_email=cfg.acquire.contact_email,
+            papers_dir=papers_dir,
+            root=cfg.root,
+            citation_key=citation_key,
+            fallback_title=cached.get("query", ""),
+        )
+        out.append({"id": result_id, **result})
+    return out
+
+
 def main() -> None:
     mcp.run()
 
