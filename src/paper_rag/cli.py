@@ -254,7 +254,9 @@ def cmd_get(args):
     cfg = load_config(args.config)
     from .acquire import cache, get as get_mod
 
-    if args.citation_key and len(args.ids) > 1:
+    ids = list(dict.fromkeys(args.ids))
+
+    if args.citation_key and len(ids) > 1:
         print("--citation-key can only be used when downloading a single id.", file=sys.stderr)
         sys.exit(1)
 
@@ -268,7 +270,7 @@ def cmd_get(args):
     papers_dir = cfg.root / cfg.corpus.papers_dir
     succeeded = 0
     failed = 0
-    for result_id in args.ids:
+    for result_id in ids:
         hit = cache.get_result(cached, result_id)
         if hit is None:
             print(f"[{result_id}] No such id in the discover cache — run `paper-rag discover` again.", file=sys.stderr)

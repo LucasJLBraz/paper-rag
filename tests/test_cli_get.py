@@ -87,6 +87,34 @@ def test_get_rejects_citation_key_with_multiple_ids(tmp_path, capsys):
     assert "single id" in out.err
 
 
+def test_get_dedupes_duplicate_ids(tmp_path, capsys):
+    config_path = _write_config(tmp_path)
+    _seed_cache(tmp_path)
+
+    with patch("paper_rag.acquire.get.download.fetch_pdf_bytes", return_value=b"%PDF-1.4") as fetch_mock, patch(
+        "paper_rag.acquire.get.unpaywall.resolve", return_value=None
+    ):
+        cmd_get(argparse.Namespace(config=str(config_path), ids=[1, 1], citation_key=None))
+
+    out = capsys.readouterr()
+    assert "1 downloaded, 0 failed" in out.err
+    assert fetch_mock.call_count == 1
+
+
+def test_get_dedupes_before_citation_key_check(tmp_path, capsys):
+    config_path = _write_config(tmp_path)
+    _seed_cache(tmp_path)
+
+    with patch("paper_rag.acquire.get.download.fetch_pdf_bytes", return_value=b"%PDF-1.4"), patch(
+        "paper_rag.acquire.get.unpaywall.resolve", return_value=None
+    ):
+        cmd_get(argparse.Namespace(config=str(config_path), ids=[1, 1], citation_key="mykey"))
+
+    out = capsys.readouterr()
+    assert "single id" not in out.err
+    assert "1 downloaded, 0 failed" in out.err
+
+
 def test_get_errors_when_no_cache_exists(tmp_path, capsys):
     config_path = _write_config(tmp_path)
 

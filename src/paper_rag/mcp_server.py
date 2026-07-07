@@ -95,6 +95,8 @@ def get_paper(ids: list[int], citation_key: str | None = None) -> list[dict]:
     cfg = load_config()
     from .acquire import cache, get as get_mod
 
+    ids = list(dict.fromkeys(ids))
+
     if citation_key and len(ids) > 1:
         return [{"id": i, "status": "error", "error": "citation_key can only be used with a single id"} for i in ids]
 
