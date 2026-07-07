@@ -229,12 +229,11 @@ def cmd_discover(args):
     results = discover.discover(
         args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key, limit=args.limit
     )
+    index_dir = cfg.root / cfg.index.dir
+    cache.write_cache(index_dir, args.query, results)
     if not results:
         print("No results found across Semantic Scholar / OpenAlex for this query.", file=sys.stderr)
         return
-
-    index_dir = cfg.root / cfg.index.dir
-    cache.write_cache(index_dir, args.query, results)
 
     for i, hit in enumerate(results, start=1):
         oa = "yes" if hit["has_pdf"] else "no"
