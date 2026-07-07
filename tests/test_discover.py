@@ -130,6 +130,21 @@ def test_dedup_fallback_key_is_unique_across_separate_source_hit_lists():
     assert {r["source"] for r in results} == {"semantic_scholar", "openalex"}
 
 
+def test_dedup_key_fallback_uses_the_given_id_not_object_identity():
+    # Direct, low-level proof that the fallback key derives from fallback_id
+    # rather than from object identity. This calls _dedup_key twice on the
+    # *same* dict object with two different fallback_id values: if the
+    # implementation still used id(hit) internally, both calls would return
+    # the identical key (same object => same id()) and this would fail. It
+    # only passes because uniqueness genuinely comes from the counter value
+    # threaded through discover(), not from id()/object-lifetime luck --
+    # unlike test_dedup_fallback_key_is_unique_across_separate_source_hit_lists
+    # above, which keeps both hit dicts alive for the whole test and so would
+    # have passed against the old, buggy id(hit) implementation too.
+    hit = {"doi": None, "title": ""}
+    assert discover._dedup_key(hit, 0) != discover._dedup_key(hit, 1)
+
+
 def test_one_source_failing_does_not_abort_the_other():
     with patch(
         "paper_rag.acquire.discover.semantic_scholar.search", side_effect=requests.HTTPError("429 rate limited")
