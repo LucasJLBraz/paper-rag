@@ -71,17 +71,24 @@ def list_indexed_papers() -> list[str]:
 def discover_papers(query: str, limit: int = 10) -> list[dict]:
     """Topical search across Semantic Scholar + OpenAlex (not a title/DOI match).
 
-    Returns up to `limit` ranked, deduplicated candidates, each with title,
-    authors, year, doi, source, relevance, has_pdf, and id. Results are
-    cached locally — call get_paper(ids=[...]) to download chosen ones.
+    Returns up to `limit` ranked candidates, each with title, authors,
+    year, doi, source, relevance, has_pdf, and id. Ids are assigned from a
+    counter that never resets for this cache file, so an id from an
+    earlier discover_papers() call stays valid for get_paper() even after
+    later calls — there's no need to re-run discover_papers before
+    downloading. A candidate already surfaced by an earlier call in this
+    cache (same doi, or same normalized title when doi is absent) comes
+    back compact — just {id, title, duplicate_of_id} pointing at its
+    original id — instead of repeating its full metadata/abstract. Note
+    that repeat queries can rank differently between calls: this reflects
+    live upstream API state (Semantic Scholar/OpenAlex), not a local bug.
     """
     cfg = load_config()
     from .acquire import cache, discover
 
     results = discover.discover(query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key, limit=limit)
     index_dir = cfg.root / cfg.index.dir
-    cache.write_cache(index_dir, query, results)
-    return [{**hit, "id": i} for i, hit in enumerate(results, start=1)]
+    return cache.append_cache(index_dir, query, results)
 
 
 @mcp.tool()
@@ -121,7 +128,7 @@ def get_paper(ids: list[int], citation_key: str | None = None) -> list[dict]:
             papers_dir=papers_dir,
             root=cfg.root,
             citation_key=citation_key,
-            fallback_title=cached.get("query", ""),
+            fallback_title=hit.get("query", ""),
         )
         out.append({"id": result_id, **result})
     return out
