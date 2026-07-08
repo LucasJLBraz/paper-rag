@@ -32,6 +32,12 @@ def _get_index():
         _state["backend"] = backend
         _state["index"] = index
         _state["table"] = table
+    else:
+        # A separate `paper-rag build` (CLI) process may have committed new
+        # rows since this table handle was opened; checkout_latest() is a
+        # local, no-network call that points it at the newest version
+        # without paying the embedding backend's construction cost again.
+        _state["table"].checkout_latest()
     return _state["backend"], _state["index"], _state["table"]
 
 
