@@ -46,7 +46,7 @@ def _seed_cache(tmp_path):
             "abstract": "",
         },
     ]
-    cache.write_cache(tmp_path / ".rag_index", "some query", results)
+    cache.append_cache(tmp_path / ".rag_index", "some query", results)
 
 
 def test_get_downloads_multiple_ids_and_reports_summary(tmp_path, capsys):
