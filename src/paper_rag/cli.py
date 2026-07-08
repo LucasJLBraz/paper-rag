@@ -280,7 +280,7 @@ def cmd_discover(args):
 
 
 def cmd_get(args):
-    """Download one or more candidates from the last `discover` call by id,
+    """Download one or more candidates from the discover cache by id,
     reading `discover_cache.json` and resolving via Unpaywall on demand only
     for the ids actually requested. Exits non-zero if any requested id
     fails (missing from cache, or download error)."""
@@ -316,7 +316,7 @@ def cmd_get(args):
             papers_dir=papers_dir,
             root=cfg.root,
             citation_key=args.citation_key,
-            fallback_title=cached.get("query", ""),
+            fallback_title=hit.get("query", ""),
         )
         if result["status"] == "ok":
             print(f"[{result_id}] Downloaded via {result['source']}: {result['pdf_path']} (citation key: {result['citation_key']})")

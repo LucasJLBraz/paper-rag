@@ -115,6 +115,45 @@ def test_get_dedupes_before_citation_key_check(tmp_path, capsys):
     assert "1 downloaded, 0 failed" in out.err
 
 
+def test_get_uses_hit_query_as_fallback_title_when_title_missing(tmp_path, capsys):
+    # Regression test: cmd_get used to read the dead top-level cached["query"]
+    # (always "" under the current per-hit-provenance schema), which silently
+    # degraded the auto-generated citation key to the generic "...paper"
+    # fallback whenever a candidate had no title. It should use the per-hit
+    # `hit["query"]` (the query that first surfaced this candidate) instead,
+    # mirroring mcp_server.py's get_paper.
+    config_path = _write_config(tmp_path)
+    from paper_rag.acquire import cache
+
+    results = [
+        {
+            "title": None,
+            "authors": ["Jane"],
+            "year": 2024,
+            "doi": "10.1/notitle",
+            "pdf_url": "https://ex.com/notitle.pdf",
+            "source": "semantic_scholar",
+            "abstract": "",
+        },
+    ]
+    cache.append_cache(tmp_path / ".rag_index", "quantum entanglement swapping protocols", results)
+
+    with patch("paper_rag.acquire.get.download.fetch_pdf_bytes", return_value=b"%PDF-1.4"), patch(
+        "paper_rag.acquire.get.unpaywall.resolve", return_value=None
+    ):
+        cmd_get(argparse.Namespace(config=str(config_path), ids=[1], citation_key=None))
+
+    out = capsys.readouterr()
+    # Titleless hit + authors=["Jane"], year=2024 + fallback word from the
+    # query's first non-stopword: "quantum" (not the generic "paper").
+    assert "jane2024quantum" in out.out
+    assert "jane2024paper" not in out.out
+
+    md_path = tmp_path / "papers" / "jane2024quantum.md"
+    assert md_path.exists()
+    assert "quantum entanglement swapping protocols" in md_path.read_text()
+
+
 def test_get_errors_when_no_cache_exists(tmp_path, capsys):
     config_path = _write_config(tmp_path)
 

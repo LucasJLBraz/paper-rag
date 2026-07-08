@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from paper_rag.acquire import cache
@@ -71,3 +73,35 @@ def test_read_cache_raises_clear_error_when_missing(tmp_path):
 
     with pytest.raises(cache.CacheMissError, match="paper-rag discover"):
         cache.read_cache(index_dir)
+
+
+def test_append_cache_treats_old_schema_file_as_absent(tmp_path):
+    # Regression test: the design spec promises an old-format file (single
+    # top-level "query" + flat "results" keyed "1".."N", no "queries"/
+    # "next_id"/"seen_keys") is "ignored/overwritten on the next `discover`
+    # call" rather than crashing. Assert append_cache succeeds and starts
+    # fresh (new hit gets id 1), proving the old file wasn't partially
+    # merged into the new schema.
+    index_dir = tmp_path / ".rag_index"
+    index_dir.mkdir(parents=True)
+    (index_dir / "discover_cache.json").write_text(
+        json.dumps({"query": "old", "results": {"1": {"title": "Old Paper"}}})
+    )
+
+    annotated = cache.append_cache(index_dir, "new query", [{"title": "New Paper", "doi": "10.1/new"}])
+
+    assert annotated == [{"title": "New Paper", "doi": "10.1/new", "id": 1}]
+    cached = cache.read_cache(index_dir)
+    assert cache.get_result(cached, 1)["title"] == "New Paper"
+
+
+def test_append_cache_treats_corrupt_json_file_as_absent(tmp_path):
+    # Same fallback as above, but for a genuinely corrupt/truncated file
+    # (json.JSONDecodeError) rather than a parseable-but-old-schema one.
+    index_dir = tmp_path / ".rag_index"
+    index_dir.mkdir(parents=True)
+    (index_dir / "discover_cache.json").write_text("{not valid json")
+
+    annotated = cache.append_cache(index_dir, "new query", [{"title": "New Paper", "doi": "10.1/new"}])
+
+    assert annotated[0]["id"] == 1

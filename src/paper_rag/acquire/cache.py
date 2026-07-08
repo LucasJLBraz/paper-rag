@@ -29,11 +29,29 @@ def _cache_path(index_dir: Path) -> Path:
     return index_dir / _CACHE_FILENAME
 
 
+_FRESH_CACHE_KEYS = ("next_id", "queries", "seen_keys", "results")
+
+
+def _fresh_cache() -> dict:
+    return {"next_id": 1, "queries": [], "seen_keys": {}, "results": {}}
+
+
 def _load(index_dir: Path) -> dict:
     path = _cache_path(index_dir)
     if not path.exists():
-        return {"next_id": 1, "queries": [], "seen_keys": {}, "results": {}}
-    return json.loads(path.read_text())
+        return _fresh_cache()
+    try:
+        cache = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        # Corrupt/truncated file — treat as absent (see module docstring:
+        # this file is disposable and gitignored).
+        return _fresh_cache()
+    if not isinstance(cache, dict) or any(key not in cache for key in _FRESH_CACHE_KEYS):
+        # Old-format file (single top-level "query" + flat "results" keyed
+        # "1".."N") or otherwise malformed — not migrated, per the design
+        # spec: simply ignored/overwritten on the next `discover` call.
+        return _fresh_cache()
+    return cache
 
 
 def _save(index_dir: Path, cache: dict) -> None:
