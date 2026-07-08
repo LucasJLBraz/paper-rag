@@ -435,7 +435,11 @@ def main():
     p_discover.add_argument("--limit", type=int, default=10)
     p_discover.set_defaults(func=cmd_discover)
 
-    p_get = sub.add_parser("get", help="Download one or more candidates from the last `discover` by id")
+    p_get = sub.add_parser(
+        "get",
+        help="Download one or more candidates from the discover cache by id "
+        "(fails per-id, with a reason, on non-PDF/anti-bot responses)",
+    )
     p_get.add_argument("ids", type=int, nargs="+")
     p_get.add_argument("--citation-key", default=None, help="Override the auto-generated citation key (single id only)")
     p_get.set_defaults(func=cmd_get)

@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import download, metadata, unpaywall
+from .download import InvalidPdfContentError
 
 
 def download_candidate(
@@ -22,9 +23,12 @@ def download_candidate(
     """Resolve (if needed) + download one discover() candidate.
 
     Returns {"status": "ok", "citation_key", "pdf_path", "source"} on
-    success, or {"status": "error", "error"} on failure — never raises, so
-    a batch of ids (cli.py's `get`, mcp_server.py's `get_paper`) can report
-    per-item results without one failure aborting the rest.
+    success; {"status": "invalid_content", "error"} if the downloaded
+    bytes aren't a real PDF (e.g. an anti-bot/cookie-wall page served with
+    HTTP 200 — see acquire/download.py); or {"status": "error", "error"}
+    on any other failure. Never raises, so a batch of ids (cli.py's `get`,
+    mcp_server.py's `get_paper`) can report per-item results without one
+    failure aborting the rest.
     """
     pdf_url = hit.get("pdf_url")
     source = hit.get("source", "unknown")
@@ -45,6 +49,8 @@ def download_candidate(
 
     try:
         pdf_content = download.fetch_pdf_bytes(pdf_url)
+    except InvalidPdfContentError as e:
+        return {"status": "invalid_content", "error": str(e)}
     except Exception as e:
         return {"status": "error", "error": f"Download failed: {e!r}"}
 
