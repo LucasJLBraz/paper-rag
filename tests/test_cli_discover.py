@@ -110,3 +110,28 @@ def test_discover_reports_no_results(tmp_path, capsys):
 
     out = capsys.readouterr()
     assert "No results found" in out.err
+
+
+def test_discover_prints_duplicate_line_for_a_candidate_seen_in_an_earlier_run(tmp_path, capsys):
+    config_path = _write_config(tmp_path)
+    shared = {
+        "title": "Shared Paper",
+        "authors": ["Kim"],
+        "year": 2021,
+        "doi": "10.1/shared",
+        "source": "openalex",
+        "relevance": 0.6,
+        "has_pdf": True,
+    }
+
+    with patch("paper_rag.acquire.discover.discover", return_value=[shared]):
+        cmd_discover(argparse.Namespace(config=str(config_path), query="axis A", limit=10))
+    capsys.readouterr()  # discard first run's output
+
+    with patch("paper_rag.acquire.discover.discover", return_value=[dict(shared)]):
+        cmd_discover(argparse.Namespace(config=str(config_path), query="axis B", limit=10))
+
+    out = capsys.readouterr().out
+    assert "DUPLICATE" in out
+    assert "already seen as [1]" in out
+    assert "Shared Paper" in out

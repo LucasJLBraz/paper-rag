@@ -237,9 +237,14 @@ def cmd_search(args):
 def cmd_discover(args):
     """Topical search across Semantic Scholar + OpenAlex via `discover()`.
     Prints a numbered, ranked candidate list (title, authors, year, source,
-    relevance, OA availability, abstract snippet) and writes it to
-    `discover_cache.json` so `paper-rag get <id>` can resolve it later —
-    does not download anything itself."""
+    relevance, OA availability, abstract snippet) and merges it into
+    `discover_cache.json` so `paper-rag get <id>` can resolve it later.
+    Ids persist across `discover` runs — a candidate already seen in an
+    earlier run prints as a DUPLICATE line pointing at its original id
+    instead of its full entry. Re-running the same query can still change
+    the ranking/order of results between runs: that reflects live upstream
+    API state (Semantic Scholar/OpenAlex), not a local bug. Does not
+    download anything itself."""
     cfg = load_config(args.config)
     from .acquire import cache, discover
 
@@ -247,15 +252,18 @@ def cmd_discover(args):
         args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key, limit=args.limit
     )
     index_dir = cfg.root / cfg.index.dir
-    cache.write_cache(index_dir, args.query, results)
-    if not results:
+    annotated = cache.append_cache(index_dir, args.query, results)
+    if not annotated:
         print("No results found across Semantic Scholar / OpenAlex for this query.", file=sys.stderr)
         return
 
-    for i, hit in enumerate(results, start=1):
+    for hit in annotated:
+        if "duplicate_of_id" in hit:
+            print(f"[{hit['id']}] DUPLICATE — already seen as [{hit['duplicate_of_id']}]: {hit.get('title') or '(no title)'}")
+            continue
         oa = "yes" if hit["has_pdf"] else "no"
         authors = ", ".join(hit.get("authors") or []) or "unknown authors"
-        print(f"[{i}] (relevance={hit['relevance']:.2f}, OA: {oa})  {hit.get('title') or '(no title)'}")
+        print(f"[{hit['id']}] (relevance={hit['relevance']:.2f}, OA: {oa})  {hit.get('title') or '(no title)'}")
         print(f"    {authors}, {hit.get('year') or 'n.d.'} — {hit['source']} — doi: {hit.get('doi') or 'n/a'}")
         abstract = (hit.get("abstract") or "").strip()
         if abstract:
@@ -263,7 +271,7 @@ def cmd_discover(args):
             print(f"    {snippet}")
 
     cache_path = index_dir / "discover_cache.json"
-    print(f"\nCached {len(results)} result(s) -> {cache_path.relative_to(cfg.root)}", file=sys.stderr)
+    print(f"\nCached {len(annotated)} result(s) -> {cache_path.relative_to(cfg.root)}", file=sys.stderr)
     print(
         "Run `paper-rag get <id> [<id> ...]` to download one or more "
         '(only "OA: yes" is guaranteed downloadable; others are resolved on demand).',
