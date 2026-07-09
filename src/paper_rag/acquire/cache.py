@@ -29,29 +29,40 @@ def _cache_path(index_dir: Path) -> Path:
     return index_dir / _CACHE_FILENAME
 
 
-_FRESH_CACHE_KEYS = ("next_id", "queries", "seen_keys", "results")
+_FRESH_CACHE_KEY_TYPES = {"next_id": int, "queries": list, "seen_keys": dict, "results": dict}
 
 
 def _fresh_cache() -> dict:
     return {"next_id": 1, "queries": [], "seen_keys": {}, "results": {}}
 
 
+def _parse_cache(text: str) -> dict | None:
+    """Parse and validate a cache file's contents into the cumulative
+    schema, or return None for anything that isn't one: corrupt/truncated
+    JSON, the old single-slot schema, or a mangled file that has the
+    right top-level keys but wrong-typed values (e.g. `"seen_keys": []`).
+    """
+    try:
+        cache = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(cache, dict):
+        return None
+    if any(not isinstance(cache.get(key), kind) for key, kind in _FRESH_CACHE_KEY_TYPES.items()):
+        # Old-format file (single top-level "query" + flat "results" keyed
+        # "1".."N") or otherwise malformed — not migrated, per the design
+        # spec: simply ignored/overwritten on the next `discover` call.
+        return None
+    return cache
+
+
 def _load(index_dir: Path) -> dict:
     path = _cache_path(index_dir)
     if not path.exists():
         return _fresh_cache()
-    try:
-        cache = json.loads(path.read_text())
-    except json.JSONDecodeError:
-        # Corrupt/truncated file — treat as absent (see module docstring:
-        # this file is disposable and gitignored).
-        return _fresh_cache()
-    if not isinstance(cache, dict) or any(key not in cache for key in _FRESH_CACHE_KEYS):
-        # Old-format file (single top-level "query" + flat "results" keyed
-        # "1".."N") or otherwise malformed — not migrated, per the design
-        # spec: simply ignored/overwritten on the next `discover` call.
-        return _fresh_cache()
-    return cache
+    # Corrupt/malformed file — treat as absent (see module docstring: this
+    # file is disposable and gitignored).
+    return _parse_cache(path.read_text()) or _fresh_cache()
 
 
 def _save(index_dir: Path, cache: dict) -> None:
@@ -92,11 +103,12 @@ def append_cache(index_dir: Path, query: str, results: list[dict]) -> list[dict]
 
 def read_cache(index_dir: Path) -> dict:
     path = _cache_path(index_dir)
-    if not path.exists():
+    cache = _parse_cache(path.read_text()) if path.exists() else None
+    if cache is None:
         raise CacheMissError(
             f'No discover cache found at {path}. Run `paper-rag discover "<query>"` first.'
         )
-    return json.loads(path.read_text())
+    return cache
 
 
 def get_result(cache: dict, result_id: int) -> dict | None:

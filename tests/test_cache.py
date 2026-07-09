@@ -105,3 +105,44 @@ def test_append_cache_treats_corrupt_json_file_as_absent(tmp_path):
     annotated = cache.append_cache(index_dir, "new query", [{"title": "New Paper", "doi": "10.1/new"}])
 
     assert annotated[0]["id"] == 1
+
+
+def test_append_cache_treats_wrong_typed_keys_as_absent(tmp_path):
+    # Regression test: a mangled file that has all the right top-level
+    # keys but wrong-typed values (e.g. "seen_keys" as a list instead of
+    # a dict) used to pass the presence-only check in `_load()` and then
+    # crash in `append_cache()` on `cache["seen_keys"].get(...)`.
+    index_dir = tmp_path / ".rag_index"
+    index_dir.mkdir(parents=True)
+    (index_dir / "discover_cache.json").write_text(
+        json.dumps({"next_id": 1, "queries": [], "seen_keys": [], "results": {}})
+    )
+
+    annotated = cache.append_cache(index_dir, "new query", [{"title": "New Paper", "doi": "10.1/new"}])
+
+    assert annotated == [{"title": "New Paper", "doi": "10.1/new", "id": 1}]
+
+
+def test_read_cache_raises_clear_error_for_old_schema_file(tmp_path):
+    # Regression test: `read_cache()` used to blindly `json.loads()` the
+    # file, so an old-schema or corrupt cache reached by `get`/`get_paper`
+    # (without an intervening `append_cache()` call) crashed with
+    # KeyError/JSONDecodeError instead of the same clear CacheMissError
+    # `append_cache()` already recovers from.
+    index_dir = tmp_path / ".rag_index"
+    index_dir.mkdir(parents=True)
+    (index_dir / "discover_cache.json").write_text(
+        json.dumps({"query": "old", "results": {"1": {"title": "Old Paper"}}})
+    )
+
+    with pytest.raises(cache.CacheMissError, match="paper-rag discover"):
+        cache.read_cache(index_dir)
+
+
+def test_read_cache_raises_clear_error_for_corrupt_json(tmp_path):
+    index_dir = tmp_path / ".rag_index"
+    index_dir.mkdir(parents=True)
+    (index_dir / "discover_cache.json").write_text("{not valid json")
+
+    with pytest.raises(cache.CacheMissError, match="paper-rag discover"):
+        cache.read_cache(index_dir)
