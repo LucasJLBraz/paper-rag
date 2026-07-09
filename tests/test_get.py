@@ -115,3 +115,24 @@ def test_honors_citation_key_override(tmp_path):
 
     assert result["citation_key"] == "mykey2024"
     assert (tmp_path / "papers" / "mykey2024.pdf").exists()
+
+
+def test_returns_invalid_content_status_without_writing_any_file(tmp_path):
+    from paper_rag.acquire.download import InvalidPdfContentError
+
+    with patch(
+        "paper_rag.acquire.get.download.fetch_pdf_bytes",
+        side_effect=InvalidPdfContentError("Response is not a PDF (Content-Type: text/html)"),
+    ):
+        result = get.download_candidate(
+            _hit(),
+            contact_email="test@example.com",
+            papers_dir=tmp_path / "papers",
+            root=tmp_path,
+            citation_key=None,
+            fallback_title="query text",
+        )
+
+    assert result["status"] == "invalid_content"
+    assert "not a PDF" in result["error"]
+    assert not (tmp_path / "papers").exists()

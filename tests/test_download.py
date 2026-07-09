@@ -39,7 +39,7 @@ def test_fetch_pdf_bytes_does_not_retry_permanent_403(monkeypatch):
 
 
 def test_fetch_pdf_bytes_retries_transient_errors(monkeypatch):
-    responses = [requests.exceptions.ConnectionError(), requests.exceptions.ConnectionError(), _response(200, b"ok")]
+    responses = [requests.exceptions.ConnectionError(), requests.exceptions.ConnectionError(), _response(200, b"%PDF-ok")]
 
     def fake_get(*args, **kwargs):
         result = responses.pop(0)
@@ -49,4 +49,31 @@ def test_fetch_pdf_bytes_retries_transient_errors(monkeypatch):
 
     monkeypatch.setattr(download, "time", Mock(sleep=Mock()))
     with patch("paper_rag.acquire.download.requests.get", side_effect=fake_get):
-        assert download.fetch_pdf_bytes("https://example.com/paper.pdf", attempts=3) == b"ok"
+        assert download.fetch_pdf_bytes("https://example.com/paper.pdf", attempts=3) == b"%PDF-ok"
+
+
+def test_fetch_pdf_bytes_rejects_non_pdf_content():
+    html = b"<html><body>Please verify you are human</body></html>"
+    with patch(
+        "paper_rag.acquire.download.requests.get",
+        return_value=_response(200, html, headers={"Content-Type": "text/html"}),
+    ):
+        with pytest.raises(download.InvalidPdfContentError, match="text/html"):
+            download.fetch_pdf_bytes("https://example.com/paper.pdf")
+
+
+def test_fetch_pdf_bytes_does_not_retry_non_pdf_content():
+    calls = []
+
+    def fake_get(*args, **kwargs):
+        calls.append(1)
+        return _response(200, b"<html>nope</html>", headers={"Content-Type": "text/html"})
+
+    monkeypatch_target = Mock(sleep=Mock())
+    with patch("paper_rag.acquire.download.time", monkeypatch_target), patch(
+        "paper_rag.acquire.download.requests.get", side_effect=fake_get
+    ):
+        with pytest.raises(download.InvalidPdfContentError):
+            download.fetch_pdf_bytes("https://example.com/paper.pdf", attempts=3)
+
+    assert len(calls) == 1
