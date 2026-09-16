@@ -8,18 +8,16 @@ choose from — see cli.py's `discover`/`get` commands and mcp_server.py's
 from __future__ import annotations
 
 import itertools
-import re
 import sys
 
 import requests
 
 from . import openalex, semantic_scholar
+from .dedup import natural_key
 from .relevance import relevance as _relevance
 
 _PER_SOURCE_LIMIT = 8
 _DEFAULT_LIMIT = 10
-_DOI_PREFIX_RE = re.compile(r"^https?://doi\.org/", re.IGNORECASE)
-_WHITESPACE_RE = re.compile(r"\s+")
 
 
 def _safe(fn, *args, default=None, **kwargs):
@@ -34,12 +32,9 @@ def _safe(fn, *args, default=None, **kwargs):
 
 
 def _dedup_key(hit: dict, fallback_id: int) -> str:
-    doi = (hit.get("doi") or "").strip()
-    if doi:
-        return "doi:" + _DOI_PREFIX_RE.sub("", doi).lower()
-    title = _WHITESPACE_RE.sub(" ", (hit.get("title") or "").strip().lower())
-    if title:
-        return "title:" + title
+    key = natural_key(hit)
+    if key is not None:
+        return key
     # Neither doi nor title: fall back to a key unique per hit rather than
     # colliding every such hit onto the same bare "title:" key. fallback_id
     # comes from a counter shared across the whole discover() call, so

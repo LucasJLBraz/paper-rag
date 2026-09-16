@@ -237,9 +237,14 @@ def cmd_search(args):
 def cmd_discover(args):
     """Topical search across Semantic Scholar + OpenAlex via `discover()`.
     Prints a numbered, ranked candidate list (title, authors, year, source,
-    relevance, OA availability, abstract snippet) and writes it to
-    `discover_cache.json` so `paper-rag get <id>` can resolve it later —
-    does not download anything itself."""
+    relevance, OA availability, abstract snippet) and merges it into
+    `discover_cache.json` so `paper-rag get <id>` can resolve it later.
+    Ids persist across `discover` runs — a candidate already seen in an
+    earlier run prints as a DUPLICATE line pointing at its original id
+    instead of its full entry. Re-running the same query can still change
+    the ranking/order of results between runs: that reflects live upstream
+    API state (Semantic Scholar/OpenAlex), not a local bug. Does not
+    download anything itself."""
     cfg = load_config(args.config)
     from .acquire import cache, discover
 
@@ -247,15 +252,18 @@ def cmd_discover(args):
         args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key, limit=args.limit
     )
     index_dir = cfg.root / cfg.index.dir
-    cache.write_cache(index_dir, args.query, results)
-    if not results:
+    annotated = cache.append_cache(index_dir, args.query, results)
+    if not annotated:
         print("No results found across Semantic Scholar / OpenAlex for this query.", file=sys.stderr)
         return
 
-    for i, hit in enumerate(results, start=1):
+    for hit in annotated:
+        if "duplicate_of_id" in hit:
+            print(f"[{hit['id']}] DUPLICATE — already seen as [{hit['duplicate_of_id']}]: {hit.get('title') or '(no title)'}")
+            continue
         oa = "yes" if hit["has_pdf"] else "no"
         authors = ", ".join(hit.get("authors") or []) or "unknown authors"
-        print(f"[{i}] (relevance={hit['relevance']:.2f}, OA: {oa})  {hit.get('title') or '(no title)'}")
+        print(f"[{hit['id']}] (relevance={hit['relevance']:.2f}, OA: {oa})  {hit.get('title') or '(no title)'}")
         print(f"    {authors}, {hit.get('year') or 'n.d.'} — {hit['source']} — doi: {hit.get('doi') or 'n/a'}")
         abstract = (hit.get("abstract") or "").strip()
         if abstract:
@@ -263,7 +271,7 @@ def cmd_discover(args):
             print(f"    {snippet}")
 
     cache_path = index_dir / "discover_cache.json"
-    print(f"\nCached {len(results)} result(s) -> {cache_path.relative_to(cfg.root)}", file=sys.stderr)
+    print(f"\nCached {len(annotated)} result(s) -> {cache_path.relative_to(cfg.root)}", file=sys.stderr)
     print(
         "Run `paper-rag get <id> [<id> ...]` to download one or more "
         '(only "OA: yes" is guaranteed downloadable; others are resolved on demand).',
@@ -272,7 +280,7 @@ def cmd_discover(args):
 
 
 def cmd_get(args):
-    """Download one or more candidates from the last `discover` call by id,
+    """Download one or more candidates from the discover cache by id,
     reading `discover_cache.json` and resolving via Unpaywall on demand only
     for the ids actually requested. Exits non-zero if any requested id
     fails (missing from cache, or download error)."""
@@ -308,7 +316,7 @@ def cmd_get(args):
             papers_dir=papers_dir,
             root=cfg.root,
             citation_key=args.citation_key,
-            fallback_title=cached.get("query", ""),
+            fallback_title=hit.get("query", ""),
         )
         if result["status"] == "ok":
             print(f"[{result_id}] Downloaded via {result['source']}: {result['pdf_path']} (citation key: {result['citation_key']})")
@@ -435,7 +443,11 @@ def main():
     p_discover.add_argument("--limit", type=int, default=10)
     p_discover.set_defaults(func=cmd_discover)
 
-    p_get = sub.add_parser("get", help="Download one or more candidates from the last `discover` by id")
+    p_get = sub.add_parser(
+        "get",
+        help="Download one or more candidates from the discover cache by id "
+        "(fails per-id, with a reason, on non-PDF/anti-bot responses)",
+    )
     p_get.add_argument("ids", type=int, nargs="+")
     p_get.add_argument("--citation-key", default=None, help="Override the auto-generated citation key (single id only)")
     p_get.set_defaults(func=cmd_get)
