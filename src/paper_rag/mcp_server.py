@@ -32,6 +32,12 @@ def _get_index():
         _state["backend"] = backend
         _state["index"] = index
         _state["table"] = table
+    else:
+        # A separate `paper-rag build` (CLI) process may have committed new
+        # rows since this table handle was opened; checkout_latest() is a
+        # local, no-network call that points it at the newest version
+        # without paying the embedding backend's construction cost again.
+        _state["table"].checkout_latest()
     return _state["backend"], _state["index"], _state["table"]
 
 
@@ -89,8 +95,10 @@ def get_paper(ids: list[int], citation_key: str | None = None) -> list[dict]:
     """Download one or more discover_papers() candidates by id.
 
     citation_key is only honored for a single id. Returns one dict per
-    requested id: {id, status: "ok"|"error", citation_key, pdf_path,
-    source, error}.
+    requested id: {id, status: "ok"|"error"|"invalid_content", citation_key,
+    pdf_path, source, error}. "invalid_content" means the download
+    succeeded but the response wasn't a real PDF (e.g. an anti-bot
+    challenge page or cookie-wall); no file was written for that id.
     """
     cfg = load_config()
     from .acquire import cache, get as get_mod

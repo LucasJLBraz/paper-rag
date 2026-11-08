@@ -130,7 +130,17 @@ def cmd_build(args):
 
     backend, index, table = _open_index(cfg)
 
-    pdfs = sorted(papers_dir.glob("*.pdf"))
+    pdfs = []
+    for p in sorted(papers_dir.glob("*.pdf")):
+        with p.open("rb") as f:
+            magic = f.read(5)
+        if magic == b"%PDF-":
+            pdfs.append(p)
+        else:
+            # An acquire/get that saved an anti-bot or cookie-wall page under a
+            # .pdf name (or an empty file) would otherwise be converted and
+            # indexed as if it were the paper.
+            print(f"Skipping {p.name}: not a PDF (starts with {magic!r}); replace it with the real file.", file=sys.stderr)
 
     # Prune entries for papers that no longer have a PDF on disk. Checks both
     # manifest.json and the live table's citation_keys, since a paper can end
