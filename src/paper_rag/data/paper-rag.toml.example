@@ -32,3 +32,10 @@ pdf_timeout_seconds = 120
 contact_email = "you@example.com"
 # Optional — raises Semantic Scholar's rate limit if set.
 semantic_scholar_api_key = ""
+
+[obsidian]
+# Optional — `paper-rag vault send` copies a paper (PDF + reading note) to
+# <vault_dir>/<research>/<subtopic>/. Absolute, or relative to this file.
+vault_dir = ""
+# Default: the name of this repo's directory.
+research = ""

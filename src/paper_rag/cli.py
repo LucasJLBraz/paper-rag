@@ -1,4 +1,4 @@
-"""CLI: paper-rag init | build | search | discover | get | acquire | add
+"""CLI: paper-rag init | build | search | discover | get | acquire | add | vault send
 
     paper-rag init
     paper-rag build [--rebuild]
@@ -7,6 +7,7 @@
     paper-rag get <id> [<id> ...] [--citation-key KEY]
     paper-rag acquire "<title|DOI|arXiv id>" [--citation-key KEY] [--accept-low-confidence]
     paper-rag add <file.pdf> [--doi DOI] [--citation-key KEY]
+    paper-rag vault send <citation-key|file.pdf> --subtopic NAME
 """
 from __future__ import annotations
 
@@ -475,6 +476,20 @@ def cmd_add(args):
     print(f"Citation key: {citation_key}")
 
 
+def cmd_vault_send(args):
+    """Copy a paper (PDF + reading note) into the Obsidian vault."""
+    from .vault import VaultError, send
+
+    cfg = load_config(args.config)
+    try:
+        r = send(cfg, args.paper, args.subtopic)
+    except VaultError as e:
+        print(f"vault send: {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"PDF ({r['pdf_status']}): {r['pdf']}")
+    print(f"Note ({r['note_status']}): {r['note']}")
+
+
 def main():
     # Piped/redirected stdout is block-buffered by default, which makes a
     # slow-but-working `build` (CPU embedding is the dominant cost — see
@@ -530,6 +545,13 @@ def main():
     p_add.add_argument("--doi", default=None, help="Fill the .md metadata from Crossref")
     p_add.add_argument("--citation-key", default=None, help="Override the auto-generated citation key")
     p_add.set_defaults(func=cmd_add)
+
+    p_vault = sub.add_parser("vault", help="Obsidian vault actions")
+    vault_sub = p_vault.add_subparsers(dest="vault_command", required=True)
+    p_send = vault_sub.add_parser("send", help="Copy a paper (PDF + reading note) to <vault_dir>/<research>/<subtopic>/")
+    p_send.add_argument("paper", help="Citation key, or path to a PDF")
+    p_send.add_argument("--subtopic", required=True, help="Folder under the research, for example features")
+    p_send.set_defaults(func=cmd_vault_send)
 
     args = parser.parse_args()
     args.func(args)

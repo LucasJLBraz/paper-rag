@@ -48,6 +48,16 @@ class AcquireConfig:
 
 
 @dataclass
+class ObsidianConfig:
+    # Folder inside the Obsidian vault that receives papers sent with
+    # `paper-rag vault send` (absolute, or relative to this config file).
+    vault_dir: str = ""
+    # Research name, the first folder level under vault_dir. Default: the
+    # name of the directory that holds .paper-rag.toml.
+    research: str = ""
+
+
+@dataclass
 class Config:
     root: Path
     corpus: CorpusConfig = field(default_factory=CorpusConfig)
@@ -56,6 +66,7 @@ class Config:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     ingest: IngestConfig = field(default_factory=IngestConfig)
     acquire: AcquireConfig = field(default_factory=AcquireConfig)
+    obsidian: ObsidianConfig = field(default_factory=ObsidianConfig)
 
 
 def _find_config(start: Path) -> Path:
@@ -81,4 +92,5 @@ def load_config(path: str | None = None) -> Config:
         chunking=ChunkingConfig(**data.get("chunking", {})),
         ingest=IngestConfig(**data.get("ingest", {})),
         acquire=AcquireConfig(**data.get("acquire", {})),
+        obsidian=ObsidianConfig(**data.get("obsidian", {})),
     )

@@ -132,6 +132,7 @@ auto-discovered `.paper-rag.toml` for all of them.
 | `paper-rag get <id> [<id> ...]` | Download one or more candidates from the last `discover`, by id | `--citation-key KEY` (single id only) |
 | `paper-rag acquire "<query>"` | Resolve + download one open-access PDF by exact title, DOI or arXiv id (not a topic search — see [How it works](#how-it-works)) | `--citation-key KEY`, `--accept-low-confidence` |
 | `paper-rag add <file.pdf>` | Import a PDF you downloaded yourself (for example a paywalled paper) | `--doi DOI` (fill metadata from Crossref), `--citation-key KEY` |
+| `paper-rag vault send <key>` | Copy a paper (PDF + reading note) to `<vault_dir>/<research>/<subtopic>/` in an Obsidian vault. Never overwrites a file already there | `--subtopic NAME` (required) |
 
 ## How it works
 
@@ -335,7 +336,15 @@ overlap_tokens = 60
 [acquire]
 contact_email = "you@example.com"   # required by Unpaywall
 semantic_scholar_api_key = ""       # optional, raises rate limit
+
+[obsidian]                          # optional, for `paper-rag vault send`
+vault_dir = "~/Vault/10 Faculdade/Pesquisa"
+research = ""                       # default: this repo's directory name
 ```
+
+The vault note keeps the companion metadata and adds `research`,
+`subtopic`, `status: to-read` and `sent` to its frontmatter, plus an embed of
+the PDF. The copy is one way: annotations stay in the vault.
 
 `paper-rag` looks for `.paper-rag.toml` by walking up from the current
 directory, so it works from any subdirectory of the repo.
