@@ -364,6 +364,7 @@ def _save_paper(cfg, hit: dict, citation_key: str | None, source: str, source_ur
     metadata.write_metadata(
         md_path, citation_key, title, hit.get("authors", []), hit.get("year"), hit.get("doi"),
         source, source_url, pdf_path.relative_to(cfg.root), hit.get("abstract") or "",
+        hit.get("venue") or "",
     )
     return pdf_path, md_path, citation_key
 
@@ -485,7 +486,7 @@ def cmd_add(args):
 
 
 def cmd_vault_send(args):
-    """Copy a paper (PDF + reading note) into the Obsidian vault."""
+    """Copy a paper (PDF + metadata card) into the Obsidian vault."""
     from .vault import VaultError, send
 
     cfg = load_config(args.config)
@@ -560,7 +561,7 @@ def main():
 
     p_vault = sub.add_parser("vault", help="Obsidian vault actions")
     vault_sub = p_vault.add_subparsers(dest="vault_command", required=True)
-    p_send = vault_sub.add_parser("send", help="Copy a paper (PDF + reading note) to <vault_dir>/<research>/<subtopic>/")
+    p_send = vault_sub.add_parser("send", help="Copy a paper (PDF + metadata card) to <vault_dir>/<research>/<subtopic>/")
     p_send.add_argument("paper", help="Citation key, or path to a PDF")
     p_send.add_argument("--subtopic", required=True, help="Folder under the research, for example features")
     p_send.set_defaults(func=cmd_vault_send)

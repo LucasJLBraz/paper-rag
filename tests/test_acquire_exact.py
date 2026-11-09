@@ -81,6 +81,7 @@ def test_arxiv_lookup_parses_atom():
         "doi": "10.1000/x",
         "authors": ["Jane Lee"],
         "year": 2023,
+        "venue": "arXiv",
         "abstract": "An abstract.",
         "pdf_url": "https://arxiv.org/pdf/2305.00001",
     }

@@ -42,6 +42,7 @@ def write_metadata(
     pdf_url: str,
     pdf_path: Path,
     abstract: str = "",
+    venue: str = "",
 ) -> None:
     authors_yaml = "\n".join(f"  - {a}" for a in authors) or "  - unknown"
     frontmatter = (
@@ -51,6 +52,7 @@ def write_metadata(
         f'title: "{_yaml_double_quote(title)}"\n'
         f"authors:\n{authors_yaml}\n"
         f"published: {year or 'n.d.'}\n"
+        f'venue: "{_yaml_double_quote(venue or "")}"\n'
         f"source: {source}\n"
         f"source_url: {pdf_url}\n"
         f"pdf: {pdf_path.as_posix()}\n"

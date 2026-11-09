@@ -24,6 +24,7 @@ def lookup(doi: str, contact_email: str = "") -> dict | None:
         "doi": w.get("DOI") or doi,
         "authors": [" ".join(filter(None, [a.get("given"), a.get("family")])) for a in w.get("author", [])],
         "year": date_parts[0][0],
+        "venue": (w.get("container-title") or [None])[0],
         # Crossref abstracts are JATS XML; tags only, the text is kept.
         "abstract": re.sub(r"<[^>]+>", "", w.get("abstract") or "").strip(),
     }
