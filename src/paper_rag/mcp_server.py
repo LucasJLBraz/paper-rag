@@ -140,6 +140,24 @@ def get_paper(ids: list[int], citation_key: str | None = None) -> list[dict]:
     return out
 
 
+@mcp.tool()
+def send_to_vault(paper: str, subtopic: str) -> dict:
+    """Copy a paper into the Obsidian vault for reading on the tablet.
+
+    paper is a citation_key (or a path to a PDF). The PDF and a reading note
+    (metadata + status: to-read + PDF embed) go to
+    <vault_dir>/<research>/<subtopic>/. Never overwrites: a file already in
+    the vault is reported as "exists". Returns {citation_key, pdf, note,
+    pdf_status, note_status} or {error}.
+    """
+    from .vault import VaultError, send
+
+    try:
+        return send(load_config(), paper, subtopic)
+    except VaultError as e:
+        return {"error": str(e)}
+
+
 def main() -> None:
     mcp.run()
 

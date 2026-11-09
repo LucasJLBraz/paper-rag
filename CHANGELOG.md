@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+- Add (#3): `paper-rag vault send <citation_key|file.pdf> --subtopic NAME`
+  (CLI) and `send_to_vault` (MCP). Copies the PDF and a reading note to
+  `<vault_dir>/<research>/<subtopic>/` in an Obsidian vault. The note keeps
+  the companion metadata and adds `research`, `subtopic`, `status: to-read`,
+  `sent` and a PDF embed. A PDF or note already in the vault is never
+  overwritten, so sending again is a no-op and annotations are safe.
+- New optional `[obsidian]` config section: `vault_dir`, `research`
+  (default: the repo directory name).
+
 ## 0.5.0
 
 `acquire` no longer writes the wrong paper into `papers_dir` (#5).
