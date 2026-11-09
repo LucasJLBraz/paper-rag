@@ -25,7 +25,7 @@ def download_candidate(
     Returns {"status": "ok", "citation_key", "pdf_path", "source"} on
     success; {"status": "invalid_content", "error"} if the downloaded
     bytes aren't a real PDF (e.g. an anti-bot/cookie-wall page served with
-    HTTP 200, see acquire/download.py); or {"status": "error", "error"}
+    HTTP 200 — see acquire/download.py); or {"status": "error", "error"}
     on any other failure. Never raises, so a batch of ids (cli.py's `get`,
     mcp_server.py's `get_paper`) can report per-item results without one
     failure aborting the rest.
