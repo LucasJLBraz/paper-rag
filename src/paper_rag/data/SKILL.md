@@ -1,13 +1,13 @@
 ---
 name: paper-rag
-description: Local hybrid (dense + BM25) semantic search over this repo's configured paper corpus (retrieval instead of full-text PDF reads) plus open-access paper discovery and acquisition beyond arXiv (Semantic Scholar, OpenAlex, Unpaywall). Use this to find relevant passages across the paper corpus ("what do our papers say about X") instead of re-reading whole PDFs, to run a topical search that lists ranked candidate papers to choose from (discover_papers/get_paper, or `paper-rag discover`/`get`), and to download a specific known non-arXiv paper (journal PDF, DOI) into the papers directory with a companion metadata file (acquire). If this project has an arxiv-paper-fetch skill, use that for arXiv papers specifically — this skill defers to it rather than duplicating it.
+description: Local hybrid (dense + BM25) semantic search over this repo's configured paper corpus (retrieval instead of full-text PDF reads) plus open-access paper discovery and acquisition beyond arXiv (Semantic Scholar, OpenAlex, Unpaywall). Use this to find relevant passages across the paper corpus ("what do our papers say about X") instead of re-reading whole PDFs, to run a topical search that lists ranked candidate papers to choose from (discover_papers/get_paper, or `paper-rag discover`/`get`), to download a specific known paper (exact title, DOI or arXiv id) into the papers directory with a companion metadata file (acquire), and to import a PDF the user downloaded by hand (add).
 ---
 
 # paper-rag
 
 Wraps a local, embedded RAG pipeline (the `paper-rag` package) so literature
 synthesis pulls only the relevant chunks of a paper instead of the whole
-PDF, and so non-arXiv open-access papers can be found and downloaded
+PDF, and so open-access papers can be found and downloaded
 without ad hoc curl/requests.
 
 ## When to use which tool
@@ -17,16 +17,19 @@ without ad hoc curl/requests.
   via this repo's `.mcp.json`) — call them directly, no shell-out needed.
 - **Ingestion** (a new PDF landed in the papers directory, or the index is
   stale/missing): run `paper-rag build`.
-- **Acquisition of a known non-arXiv paper**: run `paper-rag acquire "<its
-  title>"`. This matches by title/DOI — it has no real relevance ranking,
-  so pass the actual title (or a DOI), not a topical description; a vague
-  query can land on an unrelated paper that happens to share a keyword.
-  `acquire` prints a `Matched: "..."` line and a low-confidence warning
-  when its match shares few terms with your query — read both before
-  trusting the result. If this repo has an `arxiv-paper-fetch` skill and
-  the paper is on arXiv, use that instead — don't route arXiv papers
-  through this tool. For a topical query where you don't already have one
-  specific title in mind, use discovery (above) instead.
+- **Acquisition of a known paper**: run `paper-rag acquire "<DOI>"`,
+  `paper-rag acquire "arXiv:NNNN.NNNNN"` (or an arxiv.org URL), or
+  `paper-rag acquire "<exact title>"`. Prefer the DOI or arXiv id when you
+  have one: it resolves exactly (Crossref + Unpaywall, or the arXiv API) and
+  never substitutes another paper. A title query is a keyword search: if no
+  candidate's title matches the query closely, `acquire` writes nothing,
+  lists the candidates and exits 1. Re-run with `--accept-low-confidence`
+  only after you checked one of them is the paper. When a DOI has no open
+  PDF, `acquire` writes only the `.md` metadata and exits 1. For a topical
+  query, use discovery (below) instead.
+- **Manual import** (paywalled paper the user downloaded, or a publisher
+  that blocks scripted downloads): `paper-rag add <file.pdf> --doi <DOI>`
+  copies the PDF into the papers directory and fills the `.md` from Crossref.
 - **Topical/discovery search** ("find papers about X" with no specific
   title in mind): call the `discover_papers` MCP tool (or `paper-rag
   discover "<topic>"` from a shell) — it returns a ranked, numbered list of
@@ -90,9 +93,11 @@ Prefer the MCP tools when working inside Claude Code. From a shell:
 paper-rag search "how did KGSynX validate persona fidelity?" -k 5
 ```
 
-### 3. Acquire a non-arXiv paper
+### 3. Acquire a known paper
 
 ```bash
+paper-rag acquire "10.1109/TBME.2019.2909027"
+paper-rag acquire "arXiv:1706.03762"
 paper-rag acquire "Comprehensive evaluation framework for synthetic tabular data in health"
 ```
 

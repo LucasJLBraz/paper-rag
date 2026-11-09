@@ -1,11 +1,12 @@
-"""CLI: paper-rag init | build | search | discover | get | acquire
+"""CLI: paper-rag init | build | search | discover | get | acquire | add
 
     paper-rag init
     paper-rag build [--rebuild]
     paper-rag search "<query>" [-k N] [--paper CITATION_KEY]
     paper-rag discover "<query>" [--limit N]
     paper-rag get <id> [<id> ...] [--citation-key KEY]
-    paper-rag acquire "<query>" [--citation-key KEY]
+    paper-rag acquire "<title|DOI|arXiv id>" [--citation-key KEY] [--accept-low-confidence]
+    paper-rag add <file.pdf> [--doi DOI] [--citation-key KEY]
 """
 from __future__ import annotations
 
@@ -338,22 +339,68 @@ def cmd_get(args):
         sys.exit(1)
 
 
-def cmd_acquire(args):
-    """Title/DOI resolver: finds a legally open-access PDF for `args.query`
-    via `find_oa_pdf_candidates` (Semantic Scholar -> OpenAlex -> Unpaywall),
-    falling through candidates if a download fails, then writes the PDF and
-    its companion `.md` metadata into `papers_dir`. Not a topic search — use
-    `discover`/`get` for that; this picks a single best match and warns if
-    the match's relevance score is low."""
-    cfg = load_config(args.config)
-    from .acquire import download, metadata, resolve
+def _save_paper(cfg, hit: dict, citation_key: str | None, source: str, source_url: str, pdf_content: bytes | None):
+    """Write `<key>.pdf` (when pdf_content is given) and `<key>.md` into
+    papers_dir. Returns (pdf_path, md_path, citation_key)."""
+    from .acquire import metadata
 
-    candidates = resolve.find_oa_pdf_candidates(
-        args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key
+    title = hit.get("title") or "untitled"
+    citation_key = citation_key or metadata.make_citation_key(title, hit.get("authors", []), hit.get("year"))
+    papers_dir = cfg.root / cfg.corpus.papers_dir
+    papers_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = papers_dir / f"{citation_key}.pdf"
+    md_path = papers_dir / f"{citation_key}.md"
+    if pdf_content is not None:
+        pdf_path.write_bytes(pdf_content)
+    metadata.write_metadata(
+        md_path, citation_key, title, hit.get("authors", []), hit.get("year"), hit.get("doi"),
+        source, source_url, pdf_path.relative_to(cfg.root), hit.get("abstract") or "",
     )
-    if not candidates:
-        print("No legally open-access PDF found via Semantic Scholar / OpenAlex / Unpaywall.", file=sys.stderr)
-        sys.exit(1)
+    return pdf_path, md_path, citation_key
+
+
+def cmd_acquire(args):
+    """Resolver for a paper you can already name. A DOI or arXiv id
+    (bare, prefixed or as a URL) is resolved exactly via Crossref + Unpaywall
+    or the arXiv API, with no keyword search. A title goes through
+    `find_oa_pdf_candidates` (Semantic Scholar -> OpenAlex -> Unpaywall), and
+    candidates whose title matches the query poorly are rejected unless
+    `--accept-low-confidence` is given. Writes the PDF and its companion `.md`
+    into `papers_dir`. Not a topic search — use `discover`/`get` for that."""
+    cfg = load_config(args.config)
+    from .acquire import download, resolve
+
+    accept_low = getattr(args, "accept_low_confidence", False)
+    exact_meta = None
+    identifier = resolve.parse_identifier(args.query)
+    if identifier:
+        kind, ident = identifier
+        exact_meta, candidates = resolve.resolve_exact(kind, ident, cfg.acquire.contact_email)
+        if exact_meta is None:
+            print(f"{kind} {ident} not found. Nothing written.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        candidates = resolve.find_oa_pdf_candidates(
+            args.query, cfg.acquire.contact_email, cfg.acquire.semantic_scholar_api_key
+        )
+        if not candidates:
+            print("No legally open-access PDF found via Semantic Scholar / OpenAlex / Unpaywall.", file=sys.stderr)
+            sys.exit(1)
+        confident = [c for c in candidates if c.get("relevance", 1.0) >= resolve.ACQUIRE_MIN_RELEVANCE]
+        if not confident and not accept_low:
+            # A keyword search always returns something; writing it would put
+            # a different paper into papers_dir (#5).
+            print("No candidate's title matches the query closely enough. Nothing written. Candidates:", file=sys.stderr)
+            for c in candidates:
+                print(f"  - \"{c.get('title')}\" ({c.get('year') or 'n.d.'}) relevance={c['relevance']:.2f}", file=sys.stderr)
+            print(
+                "Pass the exact title or a DOI, use `paper-rag discover` for a topical search, "
+                "or re-run with --accept-low-confidence if one of these is the paper.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if not accept_low:
+            candidates = confident
 
     hit = None
     pdf_content = None
@@ -371,45 +418,59 @@ def cmd_acquire(args):
 
     papers_dir = cfg.root / cfg.corpus.papers_dir
     if hit is None:
+        if exact_meta is not None:
+            pdf_path, md_path, _ = _save_paper(cfg, exact_meta, args.citation_key, "crossref", "", None)
+            print(
+                f"No open PDF for \"{exact_meta.get('title')}\". Metadata written to {md_path.relative_to(cfg.root)}. "
+                f"Download the PDF yourself and run: paper-rag add <file.pdf> --doi {exact_meta.get('doi')}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         print(
             f"Found {len(candidates)} candidate(s) but none downloaded successfully. "
             "The publisher(s) may be blocking scripted downloads even though the PDF is open-access. "
-            "Try a more specific query, or download it manually and place it in "
+            "Download it manually and run `paper-rag add <file.pdf> --doi <doi>`, or place it in "
             f"{papers_dir}.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    citation_key = args.citation_key or metadata.make_citation_key(
-        hit.get("title") or args.query, hit.get("authors", []), hit.get("year")
-    )
-    papers_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = papers_dir / f"{citation_key}.pdf"
-    md_path = papers_dir / f"{citation_key}.md"
-
-    pdf_path.write_bytes(pdf_content)
-    metadata.write_metadata(
-        md_path,
-        citation_key,
-        hit.get("title") or args.query,
-        hit.get("authors", []),
-        hit.get("year"),
-        hit.get("doi"),
-        hit["source"],
-        hit["pdf_url"],
-        pdf_path.relative_to(cfg.root),
-        hit.get("abstract") or "",
+    pdf_path, md_path, citation_key = _save_paper(
+        cfg, {**hit, "title": hit.get("title") or args.query}, args.citation_key, hit["source"], hit["pdf_url"], pdf_content
     )
     print(f"Downloaded via {hit['source']}: {pdf_path.relative_to(cfg.root)}")
     print(f"Matched: \"{hit.get('title') or '(no title returned)'}\" ({hit.get('year') or 'n.d.'})")
-    if hit.get("relevance", 1.0) < resolve.RELEVANCE_WARN_THRESHOLD:
+    if hit.get("relevance", 1.0) < resolve.ACQUIRE_MIN_RELEVANCE:
         print(
-            f"  WARNING: low keyword overlap (relevance={hit['relevance']:.2f}) between your query and "
-            "the matched title/abstract. `acquire` matches by title/DOI, not topic — verify this is "
-            "actually the paper you meant before citing it. For topical/discovery searches, use "
-            "`paper-rag discover` instead.",
+            f"  WARNING: low title overlap (relevance={hit['relevance']:.2f}), accepted because of "
+            "--accept-low-confidence. Verify this is the paper you meant before citing it.",
             file=sys.stderr,
         )
+    print(f"Metadata: {md_path.relative_to(cfg.root)}")
+    print(f"Citation key: {citation_key}")
+
+
+def cmd_add(args):
+    """Manual import: copy a PDF the user downloaded (for example a paywalled
+    paper) into papers_dir, with its `.md` filled from Crossref when --doi is
+    given."""
+    cfg = load_config(args.config)
+    from .acquire import crossref
+
+    src = Path(args.pdf)
+    with src.open("rb") as f:
+        if f.read(5) != b"%PDF-":
+            print(f"{src} is not a PDF. Nothing written.", file=sys.stderr)
+            sys.exit(1)
+    if args.doi:
+        meta = crossref.lookup(args.doi, cfg.acquire.contact_email)
+        if meta is None:
+            print(f"DOI {args.doi} not found in Crossref. Nothing written.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        meta = {"title": src.stem}
+    pdf_path, md_path, citation_key = _save_paper(cfg, meta, args.citation_key, "manual", "", src.read_bytes())
+    print(f"Added: {pdf_path.relative_to(cfg.root)}")
     print(f"Metadata: {md_path.relative_to(cfg.root)}")
     print(f"Citation key: {citation_key}")
 
@@ -457,9 +518,18 @@ def main():
     p_get.set_defaults(func=cmd_get)
 
     p_acquire = sub.add_parser("acquire", help="Find + download a legally open-access paper")
-    p_acquire.add_argument("query", help="Title or free-text query")
+    p_acquire.add_argument("query", help="Exact title, DOI, or arXiv id/URL")
     p_acquire.add_argument("--citation-key", default=None, help="Override the auto-generated citation key")
+    p_acquire.add_argument(
+        "--accept-low-confidence", action="store_true", help="Download even when no title matches the query closely"
+    )
     p_acquire.set_defaults(func=cmd_acquire)
+
+    p_add = sub.add_parser("add", help="Import a PDF you downloaded yourself, with metadata from Crossref")
+    p_add.add_argument("pdf")
+    p_add.add_argument("--doi", default=None, help="Fill the .md metadata from Crossref")
+    p_add.add_argument("--citation-key", default=None, help="Override the auto-generated citation key")
+    p_add.set_defaults(func=cmd_add)
 
     args = parser.parse_args()
     args.func(args)

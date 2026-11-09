@@ -130,7 +130,8 @@ auto-discovered `.paper-rag.toml` for all of them.
 | `paper-rag search "<query>"` | Query the local index, print top-k chunks | `-k N` (default 5), `--paper CITATION_KEY` |
 | `paper-rag discover "<query>"` | Topical search across Semantic Scholar + OpenAlex; lists candidates, downloads nothing | `--limit N` (default 10) |
 | `paper-rag get <id> [<id> ...]` | Download one or more candidates from the last `discover`, by id | `--citation-key KEY` (single id only) |
-| `paper-rag acquire "<query>"` | Resolve + download one open-access PDF by title/DOI (not a topic search — see [How it works](#how-it-works)) | `--citation-key KEY` |
+| `paper-rag acquire "<query>"` | Resolve + download one open-access PDF by exact title, DOI or arXiv id (not a topic search — see [How it works](#how-it-works)) | `--citation-key KEY`, `--accept-low-confidence` |
+| `paper-rag add <file.pdf>` | Import a PDF you downloaded yourself (for example a paywalled paper) | `--doi DOI` (fill metadata from Crossref), `--citation-key KEY` |
 
 ## How it works
 
@@ -193,18 +194,25 @@ actual sense of match strength.
 
 ### Acquisition
 
-`paper-rag acquire` resolves a query to a downloadable PDF via the same
-Semantic Scholar -> OpenAlex -> Unpaywall chain, but matches by title/DOI,
-not topic — it has no semantic relevance ranking, so
-a vague topical query can land on an unrelated paper that happens to share
-a keyword. Two things guard against trusting a bad match silently: it
-collects up to 5 ranked candidates instead of one, falling through to the
-next if a candidate's PDF fails to download (a publisher blocking scripted
-access doesn't necessarily mean every open-access copy is unreachable);
-and it prints a low-confidence warning when the matched title/abstract
-shares few terms with the query. For actual topic-level discovery ("find
-papers about X"), use `paper-rag discover` instead — `acquire` is a
-resolver for a paper you can already name, not a literature search engine.
+`paper-rag acquire` resolves a paper you can already name:
+
+- A DOI (`10.xxxx/...`, bare or as a doi.org URL) is resolved exactly:
+  metadata from Crossref, PDF locations from Unpaywall (every listed OA
+  location is tried, not only the best one). No keyword search runs, so it
+  never substitutes another paper. With no open PDF, only the `.md`
+  metadata is written and the command exits 1.
+- An arXiv id (`arXiv:NNNN.NNNNN`, an arxiv.org URL, or a `10.48550/arXiv.*`
+  DOI) is resolved via the arXiv API and downloaded from arxiv.org.
+- Anything else is treated as a title and searched via Semantic Scholar ->
+  OpenAlex -> Unpaywall. A candidate counts only if its title contains at
+  least 70% of the query's terms. If none does, nothing is written: the
+  candidates are listed and the command exits 1 (`--accept-low-confidence`
+  overrides this). Up to 5 candidates are tried in order, so a publisher
+  that blocks one download does not end the attempt.
+
+For a paywalled paper, download it yourself and run
+`paper-rag add <file.pdf> --doi <DOI>`. For topic-level discovery ("find
+papers about X"), use `paper-rag discover` instead.
 
 ### Discovery
 
@@ -355,11 +363,8 @@ pdf: references/Papers/kim2025epic.pdf
 ...
 ```
 
-`paper-rag acquire` and `paper-rag get` both write this automatically. If
-you're pulling in arXiv papers, use a dedicated arXiv-fetch tool for those
-instead (this schema is compatible with one) — `paper-rag acquire` /
-`discover`+`get` are for everything Semantic Scholar / OpenAlex /
-Unpaywall can resolve that arXiv-specific tooling can't.
+`paper-rag acquire`, `get` and `add` write this automatically, arXiv
+papers included.
 
 ## Development
 

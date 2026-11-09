@@ -9,21 +9,52 @@ to the next candidate for the same query instead of giving up outright.
 """
 from __future__ import annotations
 
+import re
 import sys
 
 import requests
 
-from . import openalex, semantic_scholar, unpaywall
+from . import arxiv, crossref, openalex, semantic_scholar, unpaywall
 from .relevance import relevance as _relevance
 
 _MAX_CANDIDATES = 5
 
-# `acquire` matches by title/DOI, not topic — it has no real relevance
-# ranking, just "first hit with a pdf_url." A candidate that shares few of
-# the query's meaningful terms with its own title/abstract is worth
-# flagging to the caller even though it can't be proven wrong outright (see
-# resolve() below and cli.py's warning on the returned "relevance" field).
-RELEVANCE_WARN_THRESHOLD = 0.5
+# `acquire` matches by title, not topic. A keyword search always returns
+# *something*, so a candidate whose title holds less than this fraction of
+# the query's terms is treated as a different paper: cli.py writes nothing
+# for it unless the user passes --accept-low-confidence (#5). Scored on the
+# title only: an abstract shares generic terms with almost any query.
+ACQUIRE_MIN_RELEVANCE = 0.7
+
+_DOI_RE = re.compile(r"\b(10\.\d{4,9}/\S+)")
+_ARXIV_RE = re.compile(r"(?:arxiv\.org/(?:abs|pdf)/|arxiv[:.])\s*(\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
+
+
+def parse_identifier(query: str) -> tuple[str, str] | None:
+    """("arxiv", id) or ("doi", doi) when the query is an exact identifier
+    (bare, prefixed or as a URL), else None. arXiv is checked first because
+    arXiv DOIs (10.48550/arXiv.NNNN) also match the DOI pattern."""
+    m = _ARXIV_RE.search(query)
+    if m:
+        return "arxiv", m.group(1)
+    m = _DOI_RE.search(query)
+    if m:
+        return "doi", m.group(1).rstrip(".,;)").removesuffix(".pdf")
+    return None
+
+
+def resolve_exact(kind: str, identifier: str, contact_email: str) -> tuple[dict | None, list[dict]]:
+    """(metadata, candidates) for an exact DOI/arXiv id. Never runs a keyword
+    search, so it can not substitute another paper. metadata is None when the
+    identifier is unknown; candidates is empty when there is no open PDF."""
+    if kind == "arxiv":
+        meta = arxiv.lookup(identifier)
+        return meta, ([{**meta, "source": "arxiv", "relevance": 1.0}] if meta else [])
+    meta = crossref.lookup(identifier, contact_email)
+    if meta is None:
+        return None, []
+    urls = _safe(unpaywall.resolve_all, identifier, contact_email, default=[])
+    return meta, [{**meta, "pdf_url": u, "source": "unpaywall", "relevance": 1.0} for u in urls]
 
 
 def _safe(fn, *args, default=None, **kwargs):
@@ -48,13 +79,14 @@ def find_oa_pdf_candidates(query: str, contact_email: str, s2_api_key: str = "")
         for hit in hits:
             if len(candidates) >= _MAX_CANDIDATES:
                 return
+            score = _relevance(query, {"title": hit.get("title")})
             if hit.get("pdf_url"):
-                candidates.append({**hit, "source": source_name, "relevance": _relevance(query, hit)})
+                candidates.append({**hit, "source": source_name, "relevance": score})
             elif hit.get("doi"):
                 oa = _safe(unpaywall.resolve, hit["doi"], contact_email)
                 if oa:
                     candidates.append(
-                        {**hit, "pdf_url": oa["pdf_url"], "source": "unpaywall", "relevance": _relevance(query, hit)}
+                        {**hit, "pdf_url": oa["pdf_url"], "source": "unpaywall", "relevance": score}
                     )
 
     _collect(_safe(semantic_scholar.search, query, api_key=s2_api_key, limit=3, default=[]), "semantic_scholar")
