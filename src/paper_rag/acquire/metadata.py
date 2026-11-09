@@ -5,6 +5,7 @@ with `source`/`doi` since papers here didn't necessarily come from arXiv.
 from __future__ import annotations
 
 import re
+import string
 from pathlib import Path
 
 _STOPWORDS = {
@@ -61,3 +62,45 @@ def write_metadata(
         f"{(abstract or '').strip()}\n"
     )
     md_path.write_text(frontmatter)
+
+
+_DOI_LINE = re.compile(r"^doi:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def _norm_doi(doi: str) -> str:
+    return doi.strip().lower().removeprefix("https://doi.org/").removeprefix("http://doi.org/")
+
+
+def find_by_doi(papers_dir: Path, doi: str | None) -> str | None:
+    """citation_key of the companion .md in papers_dir whose `doi:` matches,
+    or None. Used to avoid downloading a paper the corpus already has."""
+    if not doi or not papers_dir.is_dir():
+        return None
+    wanted = _norm_doi(doi)
+    # ponytail: linear scan of every .md per call; fine for a few thousand papers.
+    for md in sorted(papers_dir.glob("*.md")):
+        m = _DOI_LINE.search(md.read_text(errors="ignore")[:2000])
+        if m and _norm_doi(m.group(1)) == wanted:
+            return md.stem
+    return None
+
+
+def check_explicit_key(papers_dir: Path, key: str, pdf_content: bytes | None) -> str:
+    """A user-given --citation-key must not overwrite another paper."""
+    if free_citation_key(papers_dir, key, pdf_content) != key:
+        raise FileExistsError(f"citation key {key} is already used by another paper in {papers_dir}")
+    return key
+
+
+def free_citation_key(papers_dir: Path, key: str, pdf_content: bytes | None) -> str:
+    """`key`, or `key` + b/c/... when `key` is already taken by another paper.
+    Generated keys collide easily (smith2020deep), and writing over the
+    existing files would silently replace a paper in the corpus."""
+    for suffix in ("",) + tuple(string.ascii_lowercase[1:]):
+        candidate = key + suffix
+        pdf, md = papers_dir / f"{candidate}.pdf", papers_dir / f"{candidate}.md"
+        if not pdf.exists() and not md.exists():
+            return candidate
+        if pdf_content is not None and pdf.exists() and pdf.read_bytes() == pdf_content:
+            return candidate  # same file: rewriting it changes nothing
+    raise FileExistsError(f"citation keys {key} to {key}z are all taken in {papers_dir}")

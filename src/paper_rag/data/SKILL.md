@@ -30,6 +30,8 @@ without ad hoc curl/requests.
 - **Manual import** (paywalled paper the user downloaded, or a publisher
   that blocks scripted downloads): `paper-rag add <file.pdf> --doi <DOI>`
   copies the PDF into the papers directory and fills the `.md` from Crossref.
+- `acquire`, `get` and `add` print `Already in the corpus as <key>` when a
+  paper with the same DOI is already there: use that key, do not re-download.
 - **Send to the reading vault** (the user wants to read or annotate a paper
   on the tablet): call the `send_to_vault` MCP tool (or `paper-rag vault
   send <citation_key> --subtopic <name>`). Ask for the subtopic if the user
