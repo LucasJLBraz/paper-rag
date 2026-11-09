@@ -48,8 +48,10 @@ def test_list_indexed_papers_sees_rows_added_by_a_separate_build_process(tmp_pat
 
     assert mcp_server.list_indexed_papers() == []
 
-    # A separate `paper-rag build` (CLI) process writes to the same on-disk
-    # index after the MCP server already opened its table handle.
+    # Simulate a separate `paper-rag build` (CLI) process writing to the
+    # same on-disk index after the MCP server already opened this table
+    # handle — a second PaperIndex instance, not the one cached in
+    # mcp_server._state.
     external_index = PaperIndex(tmp_path / ".rag_index", "chunks", 4, "fake-test-model")
     external_table = external_index.open_or_create()
     external_index.add(external_table, [_row("newpaper2026")])

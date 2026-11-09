@@ -132,6 +132,7 @@ def test_returns_invalid_content_status_without_writing_any_file(tmp_path):
             citation_key=None,
             fallback_title="query text",
         )
+
     assert result["status"] == "invalid_content"
     assert "not a PDF" in result["error"]
     assert not (tmp_path / "papers").exists()
