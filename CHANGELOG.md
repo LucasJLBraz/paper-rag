@@ -10,6 +10,16 @@
   `[[@<key>]]`. No PDF embed, no `## Notes`. The `research`/`subtopic`/
   `status`/`sent` fields from 0.6.0 are gone. Cards already in the vault are
   not rewritten.
+- Fix: a generated citation key that was already taken (two "Zhang 2020
+  Deep ..." papers both give `zhang2020deep`) overwrote the existing PDF and
+  `.md`, so the older paper silently left the corpus. `acquire`, `get` and
+  `add` now use the next free key (`zhang2020deepb`, ...), and an explicit
+  `--citation-key` that is taken is refused.
+- `acquire`, `get`/`get_paper` and `add` check the corpus for the same DOI
+  first and report `Already in the corpus as <key>` instead of downloading a
+  duplicate. `add --doi` on a DOI that `acquire` left as metadata-only adds
+  the PDF under that same key. arXiv papers without a journal DOI get arXiv's
+  DOI (`10.48550/arXiv.<id>`) so they are deduplicated too.
 - Companion `.md` files now include `venue` (journal/conference), from
   Semantic Scholar, OpenAlex, Crossref, or `arXiv`.
 

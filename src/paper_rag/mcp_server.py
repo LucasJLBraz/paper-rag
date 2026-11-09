@@ -102,10 +102,12 @@ def get_paper(ids: list[int], citation_key: str | None = None) -> list[dict]:
     """Download one or more discover_papers() candidates by id.
 
     citation_key is only honored for a single id. Returns one dict per
-    requested id: {id, status: "ok"|"error"|"invalid_content", citation_key,
+    requested id: {id, status: "ok"|"exists"|"error"|"invalid_content", citation_key,
     pdf_path, source, error}. "invalid_content" means the download
     succeeded but the response wasn't a real PDF (e.g. an anti-bot
     challenge page or cookie-wall) — no file was written for that id.
+    "exists" means a paper with the same DOI is already in the corpus;
+    nothing was downloaded.
     """
     cfg = load_config()
     from .acquire import cache, get as get_mod

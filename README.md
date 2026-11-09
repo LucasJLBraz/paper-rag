@@ -211,8 +211,14 @@ actual sense of match strength.
   overrides this). Up to 5 candidates are tried in order, so a publisher
   that blocks one download does not end the attempt.
 
+Before downloading, `acquire`, `get` and `add` look for the same DOI in the
+corpus and report `Already in the corpus as <key>` instead of making a
+duplicate. A generated citation key that is already taken gets a suffix
+(`zhang2020deepb`) instead of overwriting the other paper.
+
 For a paywalled paper, download it yourself and run
-`paper-rag add <file.pdf> --doi <DOI>`. For topic-level discovery ("find
+`paper-rag add <file.pdf> --doi <DOI>`. If `acquire` already wrote a
+metadata-only `.md` for that DOI, `add` puts the PDF under the same key. For topic-level discovery ("find
 papers about X"), use `paper-rag discover` instead.
 
 ### Discovery

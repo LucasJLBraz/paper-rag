@@ -339,6 +339,9 @@ def cmd_get(args):
         if result["status"] == "ok":
             print(f"[{result_id}] Downloaded via {result['source']}: {result['pdf_path']} (citation key: {result['citation_key']})")
             succeeded += 1
+        elif result["status"] == "exists":
+            print(f"[{result_id}] Already in the corpus: {result['pdf_path']} (citation key: {result['citation_key']})")
+            succeeded += 1
         else:
             print(f"[{result_id}] {result['error']}", file=sys.stderr)
             failed += 1
@@ -354,9 +357,19 @@ def _save_paper(cfg, hit: dict, citation_key: str | None, source: str, source_ur
     from .acquire import metadata
 
     title = hit.get("title") or "untitled"
-    citation_key = citation_key or metadata.make_citation_key(title, hit.get("authors", []), hit.get("year"))
     papers_dir = cfg.root / cfg.corpus.papers_dir
     papers_dir.mkdir(parents=True, exist_ok=True)
+    # A metadata-only entry for this DOI (acquire found no open PDF) is
+    # completed in place instead of getting a second key.
+    if citation_key:
+        try:
+            metadata.check_explicit_key(papers_dir, citation_key, pdf_content)
+        except FileExistsError as e:
+            print(f"{e}. Nothing written; pick another --citation-key.", file=sys.stderr)
+            sys.exit(1)
+    citation_key = citation_key or metadata.find_by_doi(papers_dir, hit.get("doi")) or metadata.free_citation_key(
+        papers_dir, metadata.make_citation_key(title, hit.get("authors", []), hit.get("year")), pdf_content
+    )
     pdf_path = papers_dir / f"{citation_key}.pdf"
     md_path = papers_dir / f"{citation_key}.md"
     if pdf_content is not None:
@@ -367,6 +380,15 @@ def _save_paper(cfg, hit: dict, citation_key: str | None, source: str, source_ur
         hit.get("venue") or "",
     )
     return pdf_path, md_path, citation_key
+
+
+def _already_in_corpus(cfg, doi: str | None) -> str | None:
+    """citation_key of a paper with this DOI that already has its PDF."""
+    from .acquire import metadata
+
+    papers_dir = cfg.root / cfg.corpus.papers_dir
+    key = metadata.find_by_doi(papers_dir, doi)
+    return key if key and (papers_dir / f"{key}.pdf").exists() else None
 
 
 def cmd_acquire(args):
@@ -411,6 +433,12 @@ def cmd_acquire(args):
             sys.exit(1)
         if not accept_low:
             candidates = confident
+
+    for candidate in [exact_meta or {}] + candidates:
+        existing = _already_in_corpus(cfg, candidate.get("doi"))
+        if existing:
+            print(f"Already in the corpus as {existing} (doi {candidate['doi']}). Nothing downloaded.")
+            return
 
     hit = None
     pdf_content = None
@@ -477,6 +505,10 @@ def cmd_add(args):
         if meta is None:
             print(f"DOI {args.doi} not found in Crossref. Nothing written.", file=sys.stderr)
             sys.exit(1)
+        existing = _already_in_corpus(cfg, meta.get("doi"))
+        if existing:
+            print(f"Already in the corpus as {existing} (doi {meta['doi']}). Nothing written.")
+            return
     else:
         meta = {"title": src.stem}
     pdf_path, md_path, citation_key = _save_paper(cfg, meta, args.citation_key, "manual", "", src.read_bytes())

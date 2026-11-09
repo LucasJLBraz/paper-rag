@@ -23,7 +23,8 @@ def download_candidate(
     """Resolve (if needed) + download one discover() candidate.
 
     Returns {"status": "ok", "citation_key", "pdf_path", "source"} on
-    success; {"status": "invalid_content", "error"} if the downloaded
+    success; {"status": "exists", ...same fields} without downloading when
+    a paper with the same DOI already has its PDF in papers_dir; {"status": "invalid_content", "error"} if the downloaded
     bytes aren't a real PDF (e.g. an anti-bot/cookie-wall page served with
     HTTP 200 — see acquire/download.py); or {"status": "error", "error"}
     on any other failure. Never raises, so a batch of ids (cli.py's `get`,
@@ -32,6 +33,15 @@ def download_candidate(
     """
     pdf_url = hit.get("pdf_url")
     source = hit.get("source", "unknown")
+
+    existing = metadata.find_by_doi(papers_dir, hit.get("doi"))
+    if existing and (papers_dir / f"{existing}.pdf").exists():
+        return {
+            "status": "exists",
+            "citation_key": existing,
+            "pdf_path": str((papers_dir / f"{existing}.pdf").relative_to(root)),
+            "source": source,
+        }
 
     if not pdf_url and hit.get("doi"):
         try:
@@ -55,10 +65,14 @@ def download_candidate(
         return {"status": "error", "error": f"Download failed: {e!r}"}
 
     try:
-        resolved_citation_key = citation_key or metadata.make_citation_key(
-            hit.get("title") or fallback_title, hit.get("authors", []), hit.get("year")
-        )
         papers_dir.mkdir(parents=True, exist_ok=True)
+        if citation_key:
+            metadata.check_explicit_key(papers_dir, citation_key, pdf_content)
+        resolved_citation_key = citation_key or existing or metadata.free_citation_key(
+            papers_dir,
+            metadata.make_citation_key(hit.get("title") or fallback_title, hit.get("authors", []), hit.get("year")),
+            pdf_content,
+        )
         pdf_path = papers_dir / f"{resolved_citation_key}.pdf"
         md_path = papers_dir / f"{resolved_citation_key}.md"
         pdf_path.write_bytes(pdf_content)

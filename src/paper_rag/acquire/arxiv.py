@@ -19,7 +19,9 @@ def lookup(arxiv_id: str) -> dict | None:
         return None
     return {
         "title": " ".join(entry.findtext(f"{_ATOM}title").split()),
-        "doi": entry.findtext(f"{_ARXIV}doi"),
+        # Journal DOI when published, else arXiv's own DOI, so a second
+        # acquire of the same preprint is detected as a duplicate.
+        "doi": entry.findtext(f"{_ARXIV}doi") or f"10.48550/arXiv.{arxiv_id.split('v')[0]}",
         "authors": [a.findtext(f"{_ATOM}name") for a in entry.findall(f"{_ATOM}author")],
         "year": int(entry.findtext(f"{_ATOM}published")[:4]),
         "venue": "arXiv",
