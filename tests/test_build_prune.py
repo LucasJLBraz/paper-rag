@@ -102,3 +102,19 @@ def test_build_prunes_table_entry_missing_from_manifest(tmp_path):
 
     table = index.open_or_create()
     assert "orphan" not in index.distinct_citation_keys(table)
+
+
+def test_build_skips_files_that_are_not_real_pdfs(tmp_path, capsys):
+    config_path = _write_config(tmp_path)
+    papers_dir = tmp_path / "papers"
+    papers_dir.mkdir()
+    (papers_dir / "cookie_wall.pdf").write_text("<html><body>Please enable cookies</body></html>")
+    (papers_dir / "empty.pdf").write_bytes(b"")
+
+    with patch("paper_rag.cli.pdf_to_markdown") as convert:
+        _run_build(config_path)
+
+    convert.assert_not_called()
+    err = capsys.readouterr().err
+    assert "cookie_wall.pdf" in err and "empty.pdf" in err
+    assert "not a PDF" in err

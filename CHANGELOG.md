@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.5.0
+
+`acquire` no longer writes the wrong paper into `papers_dir` (#5).
+
+- `acquire "<DOI>"` resolves the DOI exactly (Crossref metadata, every
+  Unpaywall OA location). No keyword search, so no substitute paper. With no
+  open PDF, it writes the `.md` metadata only and exits 1.
+- `acquire "arXiv:NNNN.NNNNN"` (or an arxiv.org URL / arXiv DOI) downloads from
+  arxiv.org with metadata from the arXiv API.
+- Title queries: a candidate is accepted only if its title holds at least 70%
+  of the query's terms (title only, not the abstract). Otherwise nothing is
+  written, the candidates are listed, and the command exits 1.
+  `--accept-low-confidence` overrides this.
+- Add `paper-rag add <file.pdf> [--doi DOI]` to import a PDF you downloaded
+  yourself, with metadata from Crossref.
+- SKILL.md and README no longer point to an `arxiv-paper-fetch` skill.
+## 0.4.1
+
+- Fix (#4): `paper-rag build` failed on every PDF with
+  `AttributeError: module 'pymupdf4llm' has no attribute 'to_markdown'`.
+  `pymupdf4llm` 2.x is an empty shim package and `pymupdf` 2.1 does not ship a
+  working replacement. Dependencies are now pinned to `pymupdf4llm<2` and
+  `pymupdf<2`. Existing pipx installs: `pipx install --force paper-rag` (or
+  `pipx inject paper-rag "pymupdf4llm<2" "pymupdf<2" --force`).
+- `build` now exits with status 1 and prints `N of M paper(s) failed` when any
+  paper fails to ingest, including papers that yield no chunks. Before, the
+  index was left stale with exit status 0.
+- Add a real (unmocked) PDF conversion smoke test, so a dependency upgrade that
+  breaks conversion fails CI.
+- `acquire`/`get` reject downloads whose body is not a PDF (`%PDF-`), and
+  `build` skips `*.pdf` files that are not PDFs, with a warning.
+- MCP `search_papers` reopens the index on each call, so it sees papers indexed
+  after the server started.
+- `paper_rag.__version__` now matches the package version.
+
 ## 0.4.0
 
 Adds the topical-discovery flow that 0.3.0's docs pointed users away from
