@@ -161,6 +161,7 @@ def cmd_build(args):
         return
 
     failures: list[tuple[str, str]] = []
+    attempted = 0
     for pdf_path in pdfs:
         citation_key = pdf_path.stem
         file_hash = _hash_file(pdf_path)
@@ -168,12 +169,14 @@ def cmd_build(args):
             continue
 
         print(f"Ingesting {citation_key} ...", flush=True)
+        attempted += 1
         paper_start = time.monotonic()
         try:
             markdown = pdf_to_markdown(pdf_path, timeout_seconds=cfg.ingest.pdf_timeout_seconds)
             chunks = chunk_markdown(markdown, cfg.chunking.max_tokens, cfg.chunking.overlap_tokens)
             if not chunks:
-                print(f"  warning: no chunks extracted from {pdf_path.name}", file=sys.stderr)
+                print(f"  FAILED: no chunks extracted from {pdf_path.name}", file=sys.stderr)
+                failures.append((citation_key, "no chunks extracted"))
                 continue
             print(f"  {len(chunks)} chunks to embed (this is the slow part on CPU) ...", flush=True)
 
@@ -210,9 +213,12 @@ def cmd_build(args):
         print(f"  {len(rows)} chunks indexed ({elapsed:.1f}s)", flush=True)
 
     if failures:
-        print(f"\n{len(failures)} paper(s) failed to ingest and were skipped:", file=sys.stderr)
+        # Exit non-zero: a "successful" build that silently left papers out
+        # makes search look healthy while answering from a stale corpus (#4).
+        print(f"\n{len(failures)} of {attempted} paper(s) failed to ingest and were skipped:", file=sys.stderr)
         for key, err in failures:
             print(f"  - {key}: {err}", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_search(args):

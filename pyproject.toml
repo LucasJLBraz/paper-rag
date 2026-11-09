@@ -1,12 +1,13 @@
 [project]
 name = "paper-rag"
-version = "0.4.0"
+version = "0.4.1"
 description = "Portable local RAG + open-access paper acquisition for Claude Code research repos"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
-    "pymupdf4llm>=0.0.17",
+    "pymupdf4llm>=0.0.17,<2",
+    "pymupdf<2",  # pymupdf 2.x ships a broken empty pymupdf4llm 2.x (no to_markdown), see #4
     "sentence-transformers>=3.0",
     "lancedb>=0.15",
     "pyarrow>=16",
