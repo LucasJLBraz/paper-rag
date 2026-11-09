@@ -41,8 +41,8 @@ def test_relevance_is_high_for_matching_title_and_low_for_unrelated_match():
     good = resolve._relevance(query, good_hit)
     bad = resolve._relevance(query, bad_hit)
 
-    assert good > resolve.RELEVANCE_WARN_THRESHOLD
-    assert bad < resolve.RELEVANCE_WARN_THRESHOLD
+    assert good > resolve.ACQUIRE_MIN_RELEVANCE
+    assert bad < resolve.ACQUIRE_MIN_RELEVANCE
 
 
 def test_find_oa_pdf_candidates_attaches_relevance_field():
@@ -54,7 +54,7 @@ def test_find_oa_pdf_candidates_attaches_relevance_field():
             "permutation feature importance guided llm tabular augmentation", contact_email="test@example.com"
         )
 
-    assert candidate["relevance"] < resolve.RELEVANCE_WARN_THRESHOLD
+    assert candidate["relevance"] < resolve.ACQUIRE_MIN_RELEVANCE
 
 
 def test_returns_none_when_all_sources_error():

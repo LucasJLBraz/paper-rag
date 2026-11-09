@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0
+
+`acquire` no longer writes the wrong paper into `papers_dir` (#5).
+
+- `acquire "<DOI>"` resolves the DOI exactly (Crossref metadata, every
+  Unpaywall OA location). No keyword search, so no substitute paper. With no
+  open PDF, it writes the `.md` metadata only and exits 1.
+- `acquire "arXiv:NNNN.NNNNN"` (or an arxiv.org URL / arXiv DOI) downloads from
+  arxiv.org with metadata from the arXiv API.
+- Title queries: a candidate is accepted only if its title holds at least 70%
+  of the query's terms (title only, not the abstract). Otherwise nothing is
+  written, the candidates are listed, and the command exits 1.
+  `--accept-low-confidence` overrides this.
+- Add `paper-rag add <file.pdf> [--doi DOI]` to import a PDF you downloaded
+  yourself, with metadata from Crossref.
+- SKILL.md and README no longer point to an `arxiv-paper-fetch` skill.
 ## 0.4.1
 
 - Fix (#4): `paper-rag build` failed on every PDF with
