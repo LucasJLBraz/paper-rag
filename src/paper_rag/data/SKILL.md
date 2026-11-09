@@ -33,7 +33,9 @@ without ad hoc curl/requests.
 - **Send to the reading vault** (the user wants to read or annotate a paper
   on the tablet): call the `send_to_vault` MCP tool (or `paper-rag vault
   send <citation_key> --subtopic <name>`). Ask for the subtopic if the user
-  did not give one. It never overwrites a PDF or note already in the vault.
+  did not give one. It copies the PDF and writes a metadata card;
+  the reading note is created by ZotFlow in Obsidian. It never overwrites a
+  PDF or card already in the vault.
 - **Topical/discovery search** ("find papers about X" with no specific
   title in mind): call the `discover_papers` MCP tool (or `paper-rag
   discover "<topic>"` from a shell) — it returns a ranked, numbered list of

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+- Change (#10): `vault send` writes a metadata card instead of a reading note.
+  The reading note (`@<key>.md`) and annotations (`<key>.zf.json`) belong to
+  ZotFlow and are never written. Card frontmatter: the companion metadata,
+  `pdf` pointing to the copied PDF (not the repo path), `tipo: ficha`,
+  `pesquisa`, `subtopico`, `data`. Body: the abstract when present, then
+  `[[@<key>]]`. No PDF embed, no `## Notes`. The `research`/`subtopic`/
+  `status`/`sent` fields from 0.6.0 are gone. Cards already in the vault are
+  not rewritten.
+- Companion `.md` files now include `venue` (journal/conference), from
+  Semantic Scholar, OpenAlex, Crossref, or `arXiv`.
+
 ## 0.6.0
 
 - Add (#3): `paper-rag vault send <citation_key|file.pdf> --subtopic NAME`

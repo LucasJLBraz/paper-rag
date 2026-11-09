@@ -73,6 +73,7 @@ def download_candidate(
             pdf_url,
             pdf_path.relative_to(root),
             hit.get("abstract") or "",
+            hit.get("venue") or "",
         )
     except Exception as e:
         return {"status": "error", "error": f"Failed to save downloaded PDF: {e!r}"}

@@ -10,7 +10,7 @@ import time
 import requests
 
 API = "https://api.semanticscholar.org/graph/v1/paper/search"
-FIELDS = "title,authors,year,externalIds,openAccessPdf,abstract"
+FIELDS = "title,authors,year,venue,externalIds,openAccessPdf,abstract"
 
 # The unauthenticated tier 429s aggressively but the cooldown is usually
 # short — a bounded retry here means one transient rate limit doesn't
@@ -51,6 +51,7 @@ def search(query: str, api_key: str = "", limit: int = 5) -> list[dict]:
                 "doi": (p.get("externalIds") or {}).get("DOI"),
                 "authors": [a["name"] for a in p.get("authors", [])],
                 "year": p.get("year"),
+                "venue": p.get("venue") or None,
                 "pdf_url": oa.get("url"),
                 "abstract": p.get("abstract"),
                 "semantic_scholar_id": p.get("paperId"),

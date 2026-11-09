@@ -22,6 +22,7 @@ def lookup(arxiv_id: str) -> dict | None:
         "doi": entry.findtext(f"{_ARXIV}doi"),
         "authors": [a.findtext(f"{_ATOM}name") for a in entry.findall(f"{_ATOM}author")],
         "year": int(entry.findtext(f"{_ATOM}published")[:4]),
+        "venue": "arXiv",
         "abstract": " ".join((entry.findtext(f"{_ATOM}summary") or "").split()),
         "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}",
     }

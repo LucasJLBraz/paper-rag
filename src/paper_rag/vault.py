@@ -1,9 +1,10 @@
 """One-way copy of a paper into an Obsidian vault for reading (#3).
 
-<vault_dir>/<research>/<subtopic>/<key>.pdf plus <key>.md, a reading note
-built from the companion metadata .md. Nothing is ever overwritten: a PDF or
-note already in the vault is left as is, so annotations are safe and sending
-twice is a no-op.
+<vault_dir>/<research>/<subtopic>/<key>.pdf plus <key>.md, a metadata card
+built from the companion metadata .md. The reading note (`@<key>.md`) and
+annotations (`<key>.zf.json`) are ZotFlow's; this never touches them.
+Nothing is ever overwritten: a PDF or card already in the vault is left as
+is, and sending twice is a no-op.
 """
 from __future__ import annotations
 
@@ -25,20 +26,31 @@ def _safe_segment(name: str, what: str) -> str:
     return name
 
 
-def _note(citation_key: str, companion: Path, research: str, subtopic: str) -> str:
-    extra = (
-        f"research: {research}\n"
-        f"subtopic: {subtopic}\n"
-        "status: to-read\n"
-        f"sent: {datetime.date.today().isoformat()}\n"
-    )
+def _card(citation_key: str, companion: Path, research: str, subtopic: str) -> str:
+    """Metadata card: companion frontmatter + vault fields, the abstract, and
+    a link to the ZotFlow reading note `@<key>`. The reading note and the
+    `.zf.json` annotations belong to ZotFlow; this never writes them (#10)."""
     text = companion.read_text() if companion.exists() else ""
     if text.startswith("---\n") and "\n---\n" in text[4:]:
-        end = text.index("\n---\n", 4) + 1
-        text = text[:end] + extra + text[end:]
+        end = text.index("\n---\n", 4)
+        head, body = text[4:end], text[end + 5 :]
     else:
-        text = f"---\ncitation_key: {citation_key}\n{extra}---\n\n{text}"
-    return f"{text.rstrip()}\n\n![[{citation_key}.pdf]]\n\n## Notes\n\n"
+        head, body = f"citation_key: {citation_key}", text
+    # The companion's `pdf:` is the repo path; in the vault the PDF sits next
+    # to the card.
+    lines = [l for l in head.splitlines() if not l.startswith("pdf:")]
+    lines += [
+        f'pdf: "[[{citation_key}.pdf]]"',
+        "tipo: ficha",
+        f"pesquisa: {research}",
+        f"subtopico: {subtopic}",
+        f"data: {datetime.date.today().isoformat()}",
+    ]
+    abstract = body.split("## Abstract", 1)[-1].strip() if "## Abstract" in body else body.strip()
+    out = "---\n" + "\n".join(lines) + "\n---\n\n"
+    if abstract:
+        out += f"## Abstract\n\n{abstract}\n\n"
+    return out + f"[[@{citation_key}]]\n"
 
 
 def send(cfg, paper: str, subtopic: str) -> dict:
@@ -71,5 +83,5 @@ def send(cfg, paper: str, subtopic: str) -> dict:
     out["note"] = str(vault_note)
     out["note_status"] = "exists" if vault_note.exists() else "created"
     if out["note_status"] == "created":
-        vault_note.write_text(_note(citation_key, pdf.with_suffix(".md"), research, subtopic))
+        vault_note.write_text(_card(citation_key, pdf.with_suffix(".md"), research, subtopic))
     return out

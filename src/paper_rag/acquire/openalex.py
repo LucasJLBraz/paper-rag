@@ -32,6 +32,7 @@ def search(query: str, contact_email: str = "", limit: int = 5) -> list[dict]:
                 "doi": (w.get("doi") or "").replace("https://doi.org/", ""),
                 "authors": [a["author"]["display_name"] for a in w.get("authorships", [])],
                 "year": w.get("publication_year"),
+                "venue": ((w.get("primary_location") or {}).get("source") or {}).get("display_name"),
                 "pdf_url": best_oa.get("pdf_url"),
                 "abstract": _reconstruct_abstract(w.get("abstract_inverted_index")),
                 "openalex_id": w.get("id"),
