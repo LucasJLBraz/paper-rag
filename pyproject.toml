@@ -35,4 +35,5 @@ packages = ["src/paper_rag"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/paper_rag/data/SKILL.md" = "paper_rag/data/SKILL.md"
+"src/paper_rag/data/leitura_passagens.md" = "paper_rag/data/leitura_passagens.md"
 "src/paper_rag/data/paper-rag.toml.example" = "paper_rag/data/paper-rag.toml.example"

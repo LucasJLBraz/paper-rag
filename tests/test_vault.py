@@ -29,7 +29,10 @@ def test_send_creates_pdf_and_metadata_card(tmp_path):
     assert 'title: "ML for AF"' in head
     assert "papers/" not in head
     assert 'pdf: "[[choi2024machine.pdf]]"\ntipo: ficha\npesquisa: vlmc_af_nsr\nsubtopico: features\ndata: ' in head
-    assert body.strip() == "## Abstract\n\nText.\n\n[[@choi2024machine]]"
+    assert "\npassagem: 0\nmeta:" in head
+    assert body.startswith("\n## Abstract\n\nText.\n\n[[@choi2024machine]]\n\n## Leitura em passagens\n")
+    for p in ("### 1ª", "### 2ª", "### 3ª", "**O que duvido:**"):
+        assert p in body
     assert not (target / "@choi2024machine.md").exists()
     assert r["pdf_status"] == r["note_status"] == "created"
 
@@ -41,7 +44,7 @@ def test_card_without_abstract_has_only_the_link(tmp_path):
     )
     send(cfg, "choi2024machine", "features")
     card = (tmp_path / "vault" / "vlmc_af_nsr" / "features" / "choi2024machine.md").read_text()
-    assert card.split("\n---\n", 1)[1].strip() == "[[@choi2024machine]]"
+    assert card.split("\n---\n", 1)[1].strip().startswith("[[@choi2024machine]]\n\n## Leitura em passagens")
     assert "pdf: papers/" not in card
 
 

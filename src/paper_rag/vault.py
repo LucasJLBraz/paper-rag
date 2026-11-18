@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import shutil
+from importlib import resources
 from pathlib import Path
 
 
@@ -45,12 +46,16 @@ def _card(citation_key: str, companion: Path, research: str, subtopic: str) -> s
         f"pesquisa: {research}",
         f"subtopico: {subtopic}",
         f"data: {datetime.date.today().isoformat()}",
+        # Reading passes (Keshav three-pass); the vault's Leitura.base reads these.
+        "passagem: 0",
+        "meta:",
     ]
     abstract = body.split("## Abstract", 1)[-1].strip() if "## Abstract" in body else body.strip()
     out = "---\n" + "\n".join(lines) + "\n---\n\n"
     if abstract:
         out += f"## Abstract\n\n{abstract}\n\n"
-    return out + f"[[@{citation_key}]]\n"
+    passes = (resources.files("paper_rag.data") / "leitura_passagens.md").read_text()
+    return out + f"[[@{citation_key}]]\n\n" + passes
 
 
 def send(cfg, paper: str, subtopic: str) -> dict:
