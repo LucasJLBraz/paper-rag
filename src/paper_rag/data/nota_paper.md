@@ -1,4 +1,10 @@
 📎 PDF: botão de clipe no topo da nota, ou [[{{KEY}}.pdf]]. Marque as passagens nas propriedades ou na tabela da pasta. Escreva só dentro das caixas de cada seção: o resto é regravado a cada grifo.
+Cores: 🟨 importante · 🟦 ideia minha · 🟥 dúvida · 🟩 método / dado · 🟪 referência a buscar
+
+## Minhas ideias e conexões
+<!-- ZF_PERSIST_BEG_ideias -->
+{{IDEIAS}}
+<!-- ZF_PERSIST_END_ideias -->
 
 ## Por que ler
 <!-- ZF_PERSIST_BEG_foco -->
@@ -34,13 +40,7 @@
 - **Falhas e o que falta:**
 <!-- ZF_PERSIST_END_p3 -->
 
-## Minhas ideias e conexões
-<!-- ZF_PERSIST_BEG_ideias -->
-{{IDEIAS}}
-<!-- ZF_PERSIST_END_ideias -->
-
 ## Grifos
-Cores: 🟨 importante · 🟦 ideia minha · 🟥 dúvida · 🟩 método / dado · 🟪 referência a buscar
 {{GRIFOS}}
 
 ## Sobre o paper
