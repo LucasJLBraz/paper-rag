@@ -1,4 +1,4 @@
-📎 PDF: botão de clipe no topo da nota, ou [[{{KEY}}.pdf]]. Marque as passagens nas propriedades ou na tabela da pasta.
+📎 PDF: botão de clipe no topo da nota, ou [[{{KEY}}.pdf]]. Marque as passagens nas propriedades ou na tabela da pasta. Escreva só dentro das caixas de cada seção: o resto é regravado a cada grifo.
 
 ## Por que ler
 <!-- ZF_PERSIST_BEG_foco -->
