@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Change: `vault send` writes the paper's one note instead of a card plus a
+  ZotFlow `@<key>` note. Frontmatter gets `tipo: paper`,
+  `zotflow-local-attachment` (ZotFlow adopts the note and keeps its
+  frontmatter and ZF_PERSIST text on re-render) and the three reading-pass
+  checkboxes `visao_geral`, `conteudo`, `a_fundo`. Body is
+  `data/nota_paper.md` (why read, one sentence, 1st/2nd/3rd pass, ideas,
+  highlights, abstract). Each subtopic gets `00 Papers.md` with the folder's
+  reading table unless a note there already embeds it.
+
 ## 0.7.0
 
 - Change (#10): `vault send` writes a metadata card instead of a reading note.

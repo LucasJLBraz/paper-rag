@@ -28,11 +28,15 @@ def test_send_creates_pdf_and_metadata_card(tmp_path):
     head, body = card.split("\n---\n", 1)
     assert 'title: "ML for AF"' in head
     assert "papers/" not in head
-    assert 'pdf: "[[choi2024machine.pdf]]"\ntipo: ficha\npesquisa: vlmc_af_nsr\nsubtopico: features\ndata: ' in head
-    assert "\npassagem: 0\nmeta:" in head
-    assert body.startswith("\n## Abstract\n\nText.\n\n[[@choi2024machine]]\n\n## Leitura em passagens\n")
-    for p in ("### 1ª", "### 2ª", "### 3ª", "**O que duvido:**"):
-        assert p in body
+    assert 'pdf: "[[choi2024machine.pdf]]"\ntipo: paper\npesquisa: vlmc_af_nsr\nsubtopico: features\ndata: ' in head
+    assert 'zotflow-local-attachment: "[[choi2024machine.pdf]]"' in head
+    assert "\nvisao_geral: false\nconteudo: false\na_fundo: false" in head
+    for h in ("## Em uma frase", "## 1ª passagem", "## 2ª passagem", "## 3ª passagem", "## Minhas ideias", "## Sobre o paper"):
+        assert h in body
+    assert "<!-- ZF_PERSIST_BEG_sobre -->\n### Abstract\n\nText.\n<!-- ZF_PERSIST_END_sobre -->" in body
+    assert body.count("ZF_PERSIST_BEG_") == body.count("ZF_PERSIST_END_") == 7
+    assert "{{" not in body
+    assert "Leitura.base#Desta pasta" in (target / "00 Papers.md").read_text()
     assert not (target / "@choi2024machine.md").exists()
     assert r["pdf_status"] == r["note_status"] == "created"
 
@@ -44,7 +48,7 @@ def test_card_without_abstract_has_only_the_link(tmp_path):
     )
     send(cfg, "choi2024machine", "features")
     card = (tmp_path / "vault" / "vlmc_af_nsr" / "features" / "choi2024machine.md").read_text()
-    assert card.split("\n---\n", 1)[1].strip().startswith("[[@choi2024machine]]\n\n## Leitura em passagens")
+    assert "<!-- ZF_PERSIST_BEG_sobre -->\n\n<!-- ZF_PERSIST_END_sobre -->" in card
     assert "pdf: papers/" not in card
 
 
@@ -71,3 +75,12 @@ def test_send_unknown_paper(tmp_path):
     cfg = _setup(tmp_path)
     with pytest.raises(VaultError, match="no PDF"):
         send(cfg, "nope2020x", "features")
+
+
+def test_index_not_duplicated_when_folder_already_embeds_table(tmp_path):
+    cfg = _setup(tmp_path)
+    folder = tmp_path / "vault" / "vlmc_af_nsr" / "features"
+    folder.mkdir(parents=True)
+    (folder / "Lista.md").write_text("![[Leitura.base#Desta pasta]]")
+    send(cfg, "choi2024machine", "features")
+    assert not (folder / "00 Papers.md").exists()

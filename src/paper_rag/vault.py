@@ -1,8 +1,9 @@
 """One-way copy of a paper into an Obsidian vault for reading (#3).
 
-<vault_dir>/<research>/<subtopic>/<key>.pdf plus <key>.md, a metadata card
-built from the companion metadata .md. The reading note (`@<key>.md`) and
-annotations (`<key>.zf.json`) are ZotFlow's; this never touches them.
+<vault_dir>/<research>/<subtopic>/<key>.pdf plus <key>.md, the paper's one
+note (metadata, reading skeleton, abstract), which ZotFlow adopts as its
+reading note; annotations (`<key>.zf.json`) are ZotFlow's. Each subtopic gets
+an index note with the folder's reading table.
 Nothing is ever overwritten: a PDF or card already in the vault is left as
 is, and sending twice is a no-op.
 """
@@ -28,9 +29,11 @@ def _safe_segment(name: str, what: str) -> str:
 
 
 def _card(citation_key: str, companion: Path, research: str, subtopic: str) -> str:
-    """Metadata card: companion frontmatter + vault fields, the abstract, and
-    a link to the ZotFlow reading note `@<key>`. The reading note and the
-    `.zf.json` annotations belong to ZotFlow; this never writes them (#10)."""
+    """The paper's single vault note: companion frontmatter + vault fields, and
+    the reading skeleton (data/nota_paper.md) with the abstract filled in.
+    `zotflow-local-attachment` makes ZotFlow adopt this note for the PDF
+    instead of creating `@<key>`; on re-render ZotFlow keeps the frontmatter
+    and the text inside the ZF_PERSIST regions."""
     text = companion.read_text() if companion.exists() else ""
     if text.startswith("---\n") and "\n---\n" in text[4:]:
         end = text.index("\n---\n", 4)
@@ -38,24 +41,50 @@ def _card(citation_key: str, companion: Path, research: str, subtopic: str) -> s
     else:
         head, body = f"citation_key: {citation_key}", text
     # The companion's `pdf:` is the repo path; in the vault the PDF sits next
-    # to the card.
+    # to the note.
     lines = [l for l in head.splitlines() if not l.startswith("pdf:")]
     lines += [
         f'pdf: "[[{citation_key}.pdf]]"',
-        "tipo: ficha",
+        "tipo: paper",
         f"pesquisa: {research}",
         f"subtopico: {subtopic}",
         f"data: {datetime.date.today().isoformat()}",
-        # Reading passes (Keshav three-pass); the vault's Leitura.base reads these.
-        "passagem: 0",
-        "meta:",
+        "zotflow-locked: true",
+        f'zotflow-local-attachment: "[[{citation_key}.pdf]]"',
+        # Keshav's three reading passes, ticked in the vault's Leitura.base.
+        "visao_geral: false",
+        "conteudo: false",
+        "a_fundo: false",
     ]
     abstract = body.split("## Abstract", 1)[-1].strip() if "## Abstract" in body else body.strip()
-    out = "---\n" + "\n".join(lines) + "\n---\n\n"
-    if abstract:
-        out += f"## Abstract\n\n{abstract}\n\n"
-    passes = (resources.files("paper_rag.data") / "leitura_passagens.md").read_text()
-    return out + f"[[@{citation_key}]]\n\n" + passes
+    note = (resources.files("paper_rag.data") / "nota_paper.md").read_text()
+    for token, value in {
+        "{{KEY}}": citation_key,
+        "{{SOBRE}}": f"### Abstract\n\n{abstract}" if abstract else "",
+        "{{FOCO}}": "", "{{FRASE}}": "", "{{IDEIAS}}": "", "{{GRIFOS}}": "",
+    }.items():
+        note = note.replace(token, value)
+    return "---\n" + "\n".join(lines) + "\n---\n" + note
+
+
+INDEX = """---
+tipo: indice
+---
+# Papers desta pasta
+
+Clique no paper para abrir a nota dele (frase, passagens, ideias e grifos). O 📎 no topo da nota abre o PDF. \
+Marque as passagens aqui ou nas propriedades da nota.
+
+![[Leitura.base#Desta pasta]]
+"""
+
+
+def _ensure_index(folder: Path) -> None:
+    """One table of the folder's papers per subtopic, unless a note there
+    already embeds it."""
+    if any("Leitura.base#Desta pasta" in f.read_text() for f in folder.glob("*.md")):
+        return
+    (folder / "00 Papers.md").write_text(INDEX)
 
 
 def send(cfg, paper: str, subtopic: str) -> dict:
@@ -89,4 +118,5 @@ def send(cfg, paper: str, subtopic: str) -> dict:
     out["note_status"] = "exists" if vault_note.exists() else "created"
     if out["note_status"] == "created":
         vault_note.write_text(_card(citation_key, pdf.with_suffix(".md"), research, subtopic))
+    _ensure_index(target)
     return out
