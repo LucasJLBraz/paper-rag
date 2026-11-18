@@ -21,6 +21,7 @@ Olhar cada figura e tabela: eixos, unidades, barra de erro, n. Pular as provas. 
 - **O que aceito:**
 - **O que duvido:**
 - **Referências a buscar:**
+- **Travou?** Deixar de lado, voltar depois de ler a base, ou seguir para a 3ª. Ajuste `meta`.
 
 ### 3ª · refazer (1 a 5 h)
 Refazer o trabalho com as mesmas suposições e comparar com o paper.
