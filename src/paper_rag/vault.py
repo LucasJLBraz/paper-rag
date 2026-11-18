@@ -51,11 +51,10 @@ def _card(citation_key: str, companion: Path, research: str, subtopic: str) -> s
         f"data: {datetime.date.today().isoformat()}",
         "zotflow-locked: true",
         f'zotflow-local-attachment: "[[{citation_key}.pdf]]"',
-        # Keshav's three reading passes, ticked in the vault's Leitura.base.
-        "visao_geral: false",
-        "conteudo: false",
-        "a_fundo: false",
     ]
+    # Keshav's three reading passes, first so they top the properties panel
+    # (ZotFlow keeps the existing key order on re-render).
+    lines = ["visao_geral: false", "conteudo: false", "a_fundo: false"] + lines
     abstract = body.split("## Abstract", 1)[-1].strip() if "## Abstract" in body else body.strip()
     note = (resources.files("paper_rag.data") / "nota_paper.md").read_text()
     for token, value in {

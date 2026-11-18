@@ -30,7 +30,7 @@ def test_send_creates_pdf_and_metadata_card(tmp_path):
     assert "papers/" not in head
     assert 'pdf: "[[choi2024machine.pdf]]"\ntipo: paper\npesquisa: vlmc_af_nsr\nsubtopico: features\ndata: ' in head
     assert 'zotflow-local-attachment: "[[choi2024machine.pdf]]"' in head
-    assert "\nvisao_geral: false\nconteudo: false\na_fundo: false" in head
+    assert head.startswith("---\nvisao_geral: false\nconteudo: false\na_fundo: false\n")
     for h in ("## Em uma frase", "## 1ª passagem", "## 2ª passagem", "## 3ª passagem", "## Minhas ideias", "## Sobre o paper"):
         assert h in body
     assert "<!-- ZF_PERSIST_BEG_sobre -->\n### Abstract\n\nText.\n<!-- ZF_PERSIST_END_sobre -->" in body
